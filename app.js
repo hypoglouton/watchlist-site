@@ -41,7 +41,7 @@ function normalizeText(value) {
 
 function formatPrice(value) {
   const num = Number(value);
-  if (!Number.isFinite(num)) return "-";
+  if (!Number.isFinite(num)) return "";
   return num.toLocaleString("fr-FR", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
@@ -59,16 +59,16 @@ function formatCompactPrice(value) {
 
 function formatPercent(value) {
   const num = Number(String(value ?? "").replace("%", "").trim());
-  if (!Number.isFinite(num)) return "-";
+  if (!Number.isFinite(num)) return "";
   const sign = num > 0 ? "+" : "";
   return `${sign}${num.toFixed(2)}%`;
 }
 
 function formatAbsoluteChange(value) {
   const num = Number(value);
-  if (!Number.isFinite(num)) return "-";
+  if (!Number.isFinite(num)) return "";
   const sign = num > 0 ? "+" : "";
-  return `${sign}${formatPrice(num)}`;
+  return `${sign}${formatCompactPrice(num)}`;
 }
 
 function getChangeClass(value) {
@@ -84,6 +84,12 @@ function formatTimestamp() {
     dateStyle: "short",
     timeStyle: "short"
   });
+}
+
+function valueOrBlank(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized || normalized === "-") return `<span class="watchlist-empty-cell"></span>`;
+  return escapeHtml(normalized);
 }
 
 async function apiSearch(query) {
@@ -123,9 +129,9 @@ async function refreshMarketIndices() {
       if (!quote || quote.price == null) throw new Error("quote_unavailable");
 
       const changeClass = getChangeClass(quote.changePercent);
-      const absoluteChange = formatAbsoluteChange(quote.change);
-      const percentChange = formatPercent(quote.changePercent);
-      const previousClose = quote.previousClose != null ? formatPrice(quote.previousClose) : "-";
+      const absoluteChange = formatAbsoluteChange(quote.change) || "-";
+      const percentChange = formatPercent(quote.changePercent) || "-";
+      const previousClose = quote.previousClose != null ? formatCompactPrice(quote.previousClose) : "-";
 
       card.classList.remove("index-loading", "positive", "negative", "neutral");
       card.classList.add(changeClass);
@@ -157,8 +163,10 @@ async function refreshWatchlist() {
   }
 
   watchlistBox.innerHTML = `
-    ${renderSectionHead("Ma watchlist", `${watchlist.length} valeur${watchlist.length > 1 ? "s" : ""}`)}
-    ${renderEmptyState("Rafraîchissement des cours en cours...")}
+    <div class="watchlist-shell">
+      ${renderSectionHead("Ma watchlist", `${watchlist.length} valeur${watchlist.length > 1 ? "s" : ""}`)}
+      ${renderEmptyState("Rafraîchissement des cours en cours...")}
+    </div>
   `;
 
   const refreshed = [];
@@ -166,7 +174,6 @@ async function refreshWatchlist() {
   for (const item of watchlist) {
     try {
       const quote = await apiQuote(item.symbol);
-
       refreshed.push({
         ...item,
         name: quote?.name || item.name || item.symbol,
@@ -193,70 +200,86 @@ function renderWatchlist() {
 
   if (watchlist.length === 0) {
     watchlistBox.innerHTML = `
-      ${renderSectionHead("Ma watchlist", "0 valeur")}
-      ${renderEmptyState("Ta watchlist est vide pour le moment.")}
+      <div class="watchlist-shell">
+        ${renderSectionHead("Ma watchlist", "0 valeur")}
+        ${renderEmptyState("Ta watchlist est vide pour le moment.")}
+      </div>
     `;
     return;
   }
 
-  const header = document.createElement("div");
-  header.innerHTML = renderSectionHead(
-    "Ma watchlist",
-    `${watchlist.length} valeur${watchlist.length > 1 ? "s" : ""}`
-  );
-  watchlistBox.appendChild(header.firstElementChild);
+  const rows = watchlist.map((item) => {
+    const changeClass = getChangeClass(item.changePercent);
+    const priceText = formatPrice(item.price);
+    const previousCloseText = formatPrice(item.previousClose);
+    const absChangeText = formatAbsoluteChange(item.change);
+    const pctChangeText = formatPercent(item.changePercent);
 
-  const toolbar = document.createElement("div");
-  toolbar.className = "toolbar";
-  toolbar.innerHTML = `
-    <div class="toolbar-copy">
-      <div class="toolbar-title">Cours de la watchlist</div>
-      <div class="toolbar-subtitle">Récupération des dernières cotes disponibles pour chaque ligne.</div>
-    </div>
-    <div class="toolbar-actions">
-      <button id="refreshWatchlistBtn">Rafraîchir les cours</button>
+    return `
+      <tr>
+        <td class="watchlist-name-cell">
+          <div class="watchlist-name-main">${escapeHtml(item.name || item.symbol)}</div>
+          <div class="watchlist-name-sub">Instrument</div>
+        </td>
+        <td><span class="watchlist-ticker">${escapeHtml(item.symbol)}</span></td>
+        <td><span class="watchlist-badge">${valueOrBlank(item.type)}</span></td>
+        <td><span class="watchlist-badge">${valueOrBlank(item.region)}</span></td>
+        <td><span class="watchlist-badge">${valueOrBlank(item.currency)}</span></td>
+        <td class="align-right">
+          <div class="watchlist-price ${changeClass}">${priceText || ""}</div>
+          <div class="watchlist-subvalue">Dernière cote</div>
+        </td>
+        <td class="align-right ${changeClass}">${escapeHtml(absChangeText)}</td>
+        <td class="align-right ${changeClass}">${escapeHtml(pctChangeText)}</td>
+        <td class="align-right">${escapeHtml(previousCloseText)}</td>
+        <td class="align-center"><span class="watchlist-empty-cell"></span></td>
+        <td class="align-center"><span class="watchlist-empty-cell"></span></td>
+        <td class="align-center"><span class="watchlist-empty-cell"></span></td>
+        <td class="align-center"><span class="watchlist-empty-cell"></span></td>
+        <td class="align-center"><button class="remove-btn" data-symbol="${escapeHtml(item.symbol)}">Retirer</button></td>
+      </tr>
+    `;
+  }).join("");
+
+  watchlistBox.innerHTML = `
+    <div class="watchlist-shell">
+      ${renderSectionHead("Ma watchlist", `${watchlist.length} valeur${watchlist.length > 1 ? "s" : ""}`)}
+      <div class="toolbar">
+        <div class="toolbar-copy">
+          <div class="toolbar-title">Vue tableau</div>
+          <div class="toolbar-subtitle">Les colonnes encore non alimentées sont laissées vides pour la suite.</div>
+        </div>
+        <div class="toolbar-actions">
+          <button id="refreshWatchlistBtn">Rafraîchir les cours</button>
+        </div>
+      </div>
+      <div class="watchlist-table-wrap">
+        <table class="watchlist-table">
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Ticker</th>
+              <th>Type</th>
+              <th>Marché</th>
+              <th>Devise</th>
+              <th class="align-right">Prix</th>
+              <th class="align-right">Var. jour</th>
+              <th class="align-right">Var. %</th>
+              <th class="align-right">Clôture préc.</th>
+              <th class="align-center">1M</th>
+              <th class="align-center">6M</th>
+              <th class="align-center">1A</th>
+              <th class="align-center">Notes</th>
+              <th class="align-center">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      </div>
     </div>
   `;
-  watchlistBox.appendChild(toolbar);
-
-  watchlist.forEach((item) => {
-    const row = document.createElement("div");
-    row.className = "card";
-
-    const priceText = item.price !== "" ? formatPrice(item.price) : "-";
-    const percentText = item.changePercent !== "" ? formatPercent(item.changePercent) : "-";
-    const prevCloseText = item.previousClose !== "" ? formatPrice(item.previousClose) : "-";
-    const changeText = item.change !== "" ? formatAbsoluteChange(item.change) : "-";
-    const changeClass = getChangeClass(item.changePercent);
-
-    row.innerHTML = `
-      <div class="left">
-        <div class="top-line">
-          <div class="identity">
-            <div class="title">${escapeHtml(item.name || item.symbol)}</div>
-            <div class="ticker">${escapeHtml(item.symbol)}</div>
-          </div>
-
-          <div class="price-box">
-            <div class="price ${changeClass}">${priceText}</div>
-            <div class="change ${changeClass}">${percentText}</div>
-          </div>
-        </div>
-
-        <div class="meta">
-          <div class="meta-line">${escapeHtml(item.type || "-")} • ${escapeHtml(item.region || "-")} • ${escapeHtml(item.currency || "-")}</div>
-          <div class="meta-line">Variation jour : ${changeText}</div>
-          <div class="meta-line">Clôture précédente : ${prevCloseText}</div>
-        </div>
-      </div>
-
-      <div class="actions">
-        <button class="remove-btn" data-symbol="${escapeHtml(item.symbol)}">Retirer</button>
-      </div>
-    `;
-
-    watchlistBox.appendChild(row);
-  });
 
   const refreshBtn = document.getElementById("refreshWatchlistBtn");
   if (refreshBtn) {
@@ -291,16 +314,13 @@ function renderResults(items) {
   resultsBox.appendChild(header.firstElementChild);
 
   items.forEach((item) => {
-    const alreadyAdded = watchlist.some(
-      (w) => normalizeText(w.symbol) === normalizeText(item.symbol)
-    );
-
+    const alreadyAdded = watchlist.some((w) => normalizeText(w.symbol) === normalizeText(item.symbol));
     const row = document.createElement("div");
     row.className = "card";
 
-    const percentText = item.changePercent !== "" ? formatPercent(item.changePercent) : "-";
-    const changeText = item.change !== "" ? formatAbsoluteChange(item.change) : "-";
+    const percentText = formatPercent(item.changePercent) || "-";
     const changeClass = getChangeClass(item.changePercent);
+    const priceText = formatPrice(item.price) || "-";
 
     row.innerHTML = `
       <div class="left">
@@ -309,20 +329,16 @@ function renderResults(items) {
             <div class="title">${escapeHtml(item.name || item.symbol)}</div>
             <div class="ticker">${escapeHtml(item.symbol)}</div>
           </div>
-
           <div class="price-box">
-            <div class="price ${changeClass}">${formatPrice(item.price)}</div>
+            <div class="price ${changeClass}">${priceText}</div>
             <div class="change ${changeClass}">${percentText}</div>
           </div>
         </div>
-
         <div class="meta">
           <div class="meta-line">${escapeHtml(item.type || "-")} • ${escapeHtml(item.region || "-")} • ${escapeHtml(item.currency || "-")}</div>
-          <div class="meta-line">Variation jour : ${changeText}</div>
-          <div class="meta-line">Clôture précédente : ${item.previousClose !== "" ? formatPrice(item.previousClose) : "-"}</div>
+          <div class="meta-line">Clôture précédente : ${escapeHtml(formatPrice(item.previousClose) || "-")}</div>
         </div>
       </div>
-
       <div class="actions">
         <button class="add-btn" data-symbol="${escapeHtml(item.symbol)}" ${alreadyAdded ? "disabled" : ""}>
           ${alreadyAdded ? "Déjà ajoutée" : "Ajouter"}
@@ -334,13 +350,11 @@ function renderResults(items) {
   });
 
   document.querySelectorAll(".add-btn").forEach((button) => {
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", () => {
       const item = items.find((asset) => asset.symbol === button.dataset.symbol);
       if (!item) return;
 
-      const exists = watchlist.some(
-        (w) => normalizeText(w.symbol) === normalizeText(item.symbol)
-      );
+      const exists = watchlist.some((w) => normalizeText(w.symbol) === normalizeText(item.symbol));
       if (exists) return;
 
       button.disabled = true;
