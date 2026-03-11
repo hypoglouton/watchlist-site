@@ -7,6 +7,105 @@ const watchlistBox = document.getElementById("watchlist");
 
 let watchlist = JSON.parse(localStorage.getItem("watchlist")) || [];
 
+/* =========================
+   ALIAS LOCAUX ETF / ETC
+   ========================= */
+
+const SMART_ALIASES = [
+  {
+    aliases: [
+      "ishares physical gold",
+      "ishares gold",
+      "physical gold",
+      "gold ishares",
+      "ishares physical gold etc",
+      "or ishares",
+      "etc or ishares",
+      "sgln",
+      "igln",
+      "egln"
+    ],
+    candidates: [
+      {
+        symbol: "SGLN.LON",
+        apiSymbol: "SGLN.LON",
+        name: "iShares Physical Gold ETC",
+        type: "ETP",
+        region: "United Kingdom",
+        currency: "USD"
+      },
+      {
+        symbol: "IGLN.LON",
+        apiSymbol: "IGLN.LON",
+        name: "iShares Physical Gold ETC",
+        type: "ETP",
+        region: "United Kingdom",
+        currency: "GBX"
+      },
+      {
+        symbol: "EGLN.LON",
+        apiSymbol: "EGLN.LON",
+        name: "iShares Physical Gold ETC",
+        type: "ETP",
+        region: "United Kingdom",
+        currency: "EUR"
+      }
+    ]
+  },
+  {
+    aliases: [
+      "amundi msci world",
+      "cw8",
+      "amundi world"
+    ],
+    candidates: [
+      {
+        symbol: "CW8.PAR",
+        apiSymbol: "CW8.PAR",
+        name: "Amundi MSCI World UCITS ETF",
+        type: "ETF",
+        region: "France",
+        currency: "EUR"
+      }
+    ]
+  },
+  {
+    aliases: [
+      "air liquide",
+      "ai"
+    ],
+    candidates: [
+      {
+        symbol: "AI.PAR",
+        apiSymbol: "AI.PAR",
+        name: "Air Liquide SA",
+        type: "Equity",
+        region: "France",
+        currency: "EUR"
+      }
+    ]
+  },
+  {
+    aliases: [
+      "asml"
+    ],
+    candidates: [
+      {
+        symbol: "ASML.AMS",
+        apiSymbol: "ASML.AMS",
+        name: "ASML Holding NV",
+        type: "Equity",
+        region: "Netherlands",
+        currency: "EUR"
+      }
+    ]
+  }
+];
+
+/* =========================
+   OUTILS
+   ========================= */
+
 function saveWatchlist() {
   localStorage.setItem("watchlist", JSON.stringify(watchlist));
 }
@@ -56,7 +155,10 @@ function isLikelyETF(item) {
   const name = normalizeText(item.name);
   return (
     type.includes("etf") ||
+    type.includes("etp") ||
+    type.includes("etc") ||
     name.includes("etf") ||
+    name.includes("etc") ||
     name.includes("ucits") ||
     name.includes("ishares") ||
     name.includes("amundi") ||
@@ -82,7 +184,8 @@ function isEuropeanRegion(region) {
     r.includes("switzerland") ||
     r.includes("italy") ||
     r.includes("netherlands") ||
-    r.includes("belgium")
+    r.includes("belgium") ||
+    r.includes("united kingdom")
   );
 }
 
@@ -109,8 +212,8 @@ function scoreResult(item, query) {
   if (europe) score += 80;
   if (currency === "eur") score += 60;
 
-  if (etf && europe && currency === "eur") score += 140;
-  else if (etf && europe) score += 110;
+  if (etf && europe && currency === "eur") score += 180;
+  else if (etf && europe) score += 120;
   else if (etf) score += 30;
 
   if (region.includes("united states") || region.includes("us")) score -= 10;
@@ -163,8 +266,31 @@ function chooseResults(items, query) {
   return sorted.slice(0, 4);
 }
 
+function findLocalAliasMatches(query) {
+  const q = normalizeText(query);
+
+  for (const entry of SMART_ALIASES) {
+    const hit = entry.aliases.some((alias) => {
+      const a = normalizeText(alias);
+      return q === a || q.includes(a) || a.includes(q);
+    });
+
+    if (hit) {
+      return entry.candidates;
+    }
+  }
+
+  return [];
+}
+
+/* =========================
+   API
+   ========================= */
+
 async function fetchQuote(symbol) {
-  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${API_KEY}`;
+  const cleanSymbol = symbol.includes(".") ? symbol : symbol;
+
+  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(cleanSymbol)}&apikey=${API_KEY}`;
 
   const response = await fetch(url);
   const data = await response.json();
@@ -176,13 +302,17 @@ async function fetchQuote(symbol) {
   }
 
   return {
-    symbol: quote["01. symbol"] || symbol,
+    symbol: quote["01. symbol"] || cleanSymbol,
     price: quote["05. price"] || "",
     changePercent: (quote["10. change percent"] || "").replace("%", "").trim(),
     change: quote["09. change"] || "",
-    previousClose: quote["08. previous close"] || "",
+    previousClose: quote["08. previous close"] || ""
   };
 }
+
+/* =========================
+   WATCHLIST
+   ========================= */
 
 async function refreshWatchlist() {
   watchlistBox.innerHTML = "<p>Chargement des cours...</p>";
@@ -196,19 +326,19 @@ async function refreshWatchlist() {
 
   for (const item of watchlist) {
     try {
-      if (!item.symbol) {
+      if (!item.apiSymbol) {
         refreshed.push(item);
         continue;
       }
 
-      const quote = await fetchQuote(item.symbol);
+      const quote = await fetchQuote(item.apiSymbol);
 
       refreshed.push({
         ...item,
         price: quote?.price || item.price || "",
         changePercent: quote?.changePercent || item.changePercent || "",
         change: quote?.change || item.change || "",
-        previousClose: quote?.previousClose || item.previousClose || "",
+        previousClose: quote?.previousClose || item.previousClose || ""
       });
     } catch (error) {
       refreshed.push(item);
@@ -282,6 +412,10 @@ function renderWatchlist() {
   });
 }
 
+/* =========================
+   RESULTATS
+   ========================= */
+
 function renderResults(items) {
   resultsBox.innerHTML = "";
 
@@ -291,7 +425,9 @@ function renderResults(items) {
   }
 
   items.forEach((item) => {
-    const alreadyAdded = watchlist.some((w) => normalizeText(w.symbol) === normalizeText(item.symbol));
+    const alreadyAdded = watchlist.some(
+      (w) => normalizeText(w.symbol) === normalizeText(item.symbol)
+    );
 
     const row = document.createElement("div");
     row.className = "card";
@@ -323,7 +459,9 @@ function renderResults(items) {
       const item = items.find((asset) => asset.symbol === button.dataset.symbol);
       if (!item) return;
 
-      const exists = watchlist.some((w) => normalizeText(w.symbol) === normalizeText(item.symbol));
+      const exists = watchlist.some(
+        (w) => normalizeText(w.symbol) === normalizeText(item.symbol)
+      );
       if (exists) return;
 
       button.disabled = true;
@@ -332,13 +470,14 @@ function renderResults(items) {
       let quote = null;
 
       try {
-        quote = await fetchQuote(item.symbol);
+        quote = await fetchQuote(item.apiSymbol || item.symbol);
       } catch (error) {
         quote = null;
       }
 
       watchlist.push({
         symbol: item.symbol,
+        apiSymbol: item.apiSymbol || item.symbol,
         name: item.name,
         type: item.type,
         region: item.region,
@@ -346,7 +485,7 @@ function renderResults(items) {
         price: quote?.price || "",
         changePercent: quote?.changePercent || "",
         change: quote?.change || "",
-        previousClose: quote?.previousClose || "",
+        previousClose: quote?.previousClose || ""
       });
 
       saveWatchlist();
@@ -358,6 +497,10 @@ function renderResults(items) {
   });
 }
 
+/* =========================
+   RECHERCHE
+   ========================= */
+
 async function searchAssets() {
   const query = searchInput.value.trim();
 
@@ -367,6 +510,14 @@ async function searchAssets() {
   }
 
   resultsBox.innerHTML = "<p>Recherche en cours...</p>";
+
+  const localMatches = findLocalAliasMatches(query);
+
+  if (localMatches.length > 0) {
+    const finalLocal = chooseResults(dedupeResults(localMatches), query);
+    renderResults(finalLocal);
+    return;
+  }
 
   try {
     const url = `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${API_KEY}`;
@@ -381,6 +532,7 @@ async function searchAssets() {
 
     let matches = (data.bestMatches || []).map((item) => ({
       symbol: item["1. symbol"] || "",
+      apiSymbol: item["1. symbol"] || "",
       name: item["2. name"] || "",
       type: item["3. type"] || "",
       region: item["4. region"] || "",
@@ -388,7 +540,7 @@ async function searchAssets() {
       marketClose: item["6. marketClose"] || "",
       timezone: item["7. timezone"] || "",
       currency: item["8. currency"] || "",
-      matchScore: item["9. matchScore"] || "",
+      matchScore: item["9. matchScore"] || ""
     }));
 
     matches = matches.filter((item) => item.symbol && item.name);
