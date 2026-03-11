@@ -178,13 +178,13 @@ function scoreResult(item, query) {
 
   let score = 0;
 
-  if (symbol === q) score += 2000;
-  if (name === q) score += 1700;
+  if (symbol === q) score += 2400;
+  if (name === q) score += 1800;
 
-  if (symbol.startsWith(q)) score += 500;
-  if (name.startsWith(q)) score += 320;
+  if (symbol.startsWith(q)) score += 700;
+  if (name.startsWith(q)) score += 350;
 
-  if (symbol.includes(q)) score += 180;
+  if (symbol.includes(q)) score += 200;
   if (name.includes(q)) score += 130;
 
   score += Math.round(similarityScore(symbol, q) * 220);
@@ -220,14 +220,14 @@ function chooseResults(items, query) {
 
   if (!second) return [top];
   if (exactTop) return [top];
-  if (top._score - second._score >= 260) return [top];
+  if (top._score - second._score >= 350) return [top];
 
   return sorted.slice(0, 5);
 }
 
 async function fetchQuoteFromFMP(symbol) {
   try {
-    const url = `https://financialmodelingprep.com/stable/quote-short?symbol=${encodeURIComponent(symbol)}&apikey=${FMP_API_KEY}`;
+    const url = `https://financialmodelingprep.com/stable/quote?symbol=${encodeURIComponent(symbol)}&apikey=${FMP_API_KEY}`;
     const response = await fetch(url);
     const data = await response.json();
 
@@ -241,9 +241,13 @@ async function fetchQuoteFromFMP(symbol) {
     return {
       symbol: item.symbol || symbol,
       price: price,
-      changePercent: "",
-      change: "",
-      previousClose: ""
+      changePercent: Number.isFinite(Number(item.changesPercentage))
+        ? String(item.changesPercentage)
+        : "",
+      change: Number.isFinite(Number(item.change)) ? String(item.change) : "",
+      previousClose: Number.isFinite(Number(item.previousClose))
+        ? String(item.previousClose)
+        : ""
     };
   } catch (error) {
     return null;
@@ -269,9 +273,7 @@ async function fetchQuoteFromAlpha(symbol) {
     const response = await fetch(url);
     const data = await response.json();
 
-    if (data.Note || data.Information || data["Error Message"]) {
-      return null;
-    }
+    if (data.Note || data.Information || data["Error Message"]) return null;
 
     const quote = data["Global Quote"];
     if (!quote || !quote["01. symbol"]) return null;
@@ -293,14 +295,10 @@ async function fetchQuoteFromAlpha(symbol) {
 
 async function fetchRobustQuote(symbol) {
   const fmpQuote = await fetchQuoteFromFMP(symbol);
-  if (fmpQuote) {
-    return fmpQuote;
-  }
+  if (fmpQuote) return fmpQuote;
 
   const alphaQuote = await fetchQuoteFromAlpha(symbol);
-  if (alphaQuote) {
-    return alphaQuote;
-  }
+  if (alphaQuote) return alphaQuote;
 
   return null;
 }
@@ -313,9 +311,25 @@ async function enrichWithProfile(item) {
     ...item,
     name: profile.companyName || item.name,
     currency: profile.currency || item.currency,
-    type: item.type || profile.isEtf ? "ETF" : item.type,
+    type: item.type || (profile.isEtf ? "ETF" : item.type),
     region: item.region || profile.exchangeShortName || item.exchangeShortName || ""
   };
+}
+
+async function filterQuotableResults(items) {
+  const checked = [];
+
+  for (const item of items.slice(0, 5)) {
+    const quote = await fetchRobustQuote(item.symbol);
+    if (quote) {
+      checked.push({
+        ...item,
+        _quote: quote
+      });
+    }
+  }
+
+  return checked;
 }
 
 async function refreshWatchlist() {
@@ -415,7 +429,7 @@ function renderResults(items) {
   resultsBox.innerHTML = "";
 
   if (!items.length) {
-    resultsBox.innerHTML = "<p>Aucun résultat pertinent.</p>";
+    resultsBox.innerHTML = "<p>Aucun résultat cotable trouvé.</p>";
     return;
   }
 
@@ -460,10 +474,10 @@ function renderResults(items) {
       if (exists) return;
 
       button.disabled = true;
-      button.textContent = "Vérification...";
+      button.textContent = "Ajout...";
 
       const enriched = await enrichWithProfile(item);
-      const quote = await fetchRobustQuote(item.symbol);
+      const quote = item._quote || await fetchRobustQuote(item.symbol);
 
       if (!quote) {
         button.textContent = "Pas de cotation";
@@ -523,6 +537,7 @@ async function searchAssets() {
     matches = matches.filter((item) => item.symbol && item.name);
     matches = dedupeResults(matches);
     matches = chooseResults(matches, query);
+    matches = await filterQuotableResults(matches);
 
     renderResults(matches);
   } catch (error) {
