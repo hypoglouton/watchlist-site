@@ -1,5 +1,4 @@
-const ALPHA_API_KEY = "355DCVOBSX0C2X75";
-const FMP_API_KEY = "FWbT2hS8KD6DOJT4pUOUy4Ivjs1zvxmM";
+const TWELVE_API_KEY = "4be4ce1ecdd74937b85c235b3b33c05f";
 
 const searchInput = document.getElementById("searchInput");
 const searchButton = document.getElementById("searchButton");
@@ -92,8 +91,8 @@ function similarityScore(a, b) {
 }
 
 function isLikelyETF(item) {
-  const type = normalizeText(item.type);
-  const name = normalizeText(item.name);
+  const type = normalizeText(item.instrument_type || item.type);
+  const name = normalizeText(item.instrument_name || item.name);
   return (
     type.includes("etf") ||
     type.includes("fund") ||
@@ -108,24 +107,23 @@ function isLikelyETF(item) {
   );
 }
 
-function isEuropeanRegion(region, exchange) {
-  const r = normalizeText(region);
+function isEuropeanRegion(country, exchange) {
+  const c = normalizeText(country);
   const e = normalizeText(exchange);
   return (
-    r.includes("france") ||
-    r.includes("germany") ||
-    r.includes("netherlands") ||
-    r.includes("belgium") ||
-    r.includes("italy") ||
-    r.includes("spain") ||
-    r.includes("switzerland") ||
-    r.includes("united kingdom") ||
+    c.includes("france") ||
+    c.includes("germany") ||
+    c.includes("netherlands") ||
+    c.includes("belgium") ||
+    c.includes("italy") ||
+    c.includes("spain") ||
+    c.includes("switzerland") ||
+    c.includes("united kingdom") ||
     e.includes("paris") ||
     e.includes("euronext") ||
     e.includes("xetra") ||
     e.includes("frankfurt") ||
     e.includes("amsterdam") ||
-    e.includes("lse") ||
     e.includes("london")
   );
 }
@@ -135,7 +133,7 @@ function dedupeResults(items) {
   const out = [];
 
   for (const item of items) {
-    const key = `${normalizeText(item.symbol)}|${normalizeText(item.name)}|${normalizeText(item.exchangeShortName || item.exchange || "")}`;
+    const key = `${normalizeText(item.symbol)}|${normalizeText(item.instrument_name || item.name)}|${normalizeText(item.exchange || "")}`;
     if (!seen.has(key)) {
       seen.add(key);
       out.push(item);
@@ -148,7 +146,7 @@ function dedupeResults(items) {
 function isGoodMatch(item, query) {
   const q = normalizeCompact(query);
   const symbol = normalizeCompact(item.symbol);
-  const name = normalizeCompact(item.name);
+  const name = normalizeCompact(item.instrument_name || item.name);
 
   if (!q || !symbol || !name) return false;
 
@@ -169,33 +167,29 @@ function isGoodMatch(item, query) {
 function scoreResult(item, query) {
   const q = normalizeCompact(query);
   const symbol = normalizeCompact(item.symbol);
-  const name = normalizeCompact(item.name);
-  const region = normalizeText(item.region);
-  const exchange = normalizeText(item.exchangeShortName || item.exchange || "");
-  const currency = normalizeText(item.currency);
+  const name = normalizeCompact(item.instrument_name || item.name);
+  const country = normalizeText(item.country);
+  const exchange = normalizeText(item.exchange || "");
   const etf = isLikelyETF(item);
-  const europe = isEuropeanRegion(region, exchange);
+  const europe = isEuropeanRegion(country, exchange);
 
   let score = 0;
 
-  if (symbol === q) score += 2400;
+  if (symbol === q) score += 2500;
   if (name === q) score += 1800;
 
   if (symbol.startsWith(q)) score += 700;
   if (name.startsWith(q)) score += 350;
 
-  if (symbol.includes(q)) score += 200;
-  if (name.includes(q)) score += 130;
+  if (symbol.includes(q)) score += 220;
+  if (name.includes(q)) score += 150;
 
   score += Math.round(similarityScore(symbol, q) * 220);
   score += Math.round(similarityScore(name, q) * 160);
 
   if (europe) score += 80;
-  if (currency === "eur") score += 60;
-
-  if (etf && europe && currency === "eur") score += 140;
-  else if (etf && europe) score += 100;
-  else if (etf) score += 30;
+  if (etf && europe) score += 120;
+  else if (etf) score += 40;
 
   return score;
 }
@@ -216,7 +210,7 @@ function chooseResults(items, query) {
 
   const exactTop =
     normalizeCompact(top.symbol) === queryNorm ||
-    normalizeCompact(top.name) === queryNorm;
+    normalizeCompact(top.instrument_name || top.name) === queryNorm;
 
   if (!second) return [top];
   if (exactTop) return [top];
@@ -225,111 +219,58 @@ function chooseResults(items, query) {
   return sorted.slice(0, 5);
 }
 
-async function fetchQuoteFromFMP(symbol) {
+async function fetchQuote(symbol) {
   try {
-    const url = `https://financialmodelingprep.com/stable/quote?symbol=${encodeURIComponent(symbol)}&apikey=${FMP_API_KEY}`;
+    const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${TWELVE_API_KEY}`;
     const response = await fetch(url);
     const data = await response.json();
 
-    if (!Array.isArray(data) || !data.length) return null;
+    if (!data || data.status === "error") return null;
 
-    const item = data[0];
-    const price = Number(item.price);
-
+    const price = Number(data.close ?? data.price);
     if (!Number.isFinite(price) || price <= 0) return null;
 
+    let changePercent = "";
+    if (data.percent_change !== undefined && data.percent_change !== null) {
+      changePercent = String(data.percent_change);
+    }
+
+    let previousClose = "";
+    if (data.previous_close !== undefined && data.previous_close !== null) {
+      previousClose = String(data.previous_close);
+    }
+
+    let change = "";
+    if (data.change !== undefined && data.change !== null) {
+      change = String(data.change);
+    }
+
     return {
-      symbol: item.symbol || symbol,
-      price: price,
-      changePercent: Number.isFinite(Number(item.changesPercentage))
-        ? String(item.changesPercentage)
-        : "",
-      change: Number.isFinite(Number(item.change)) ? String(item.change) : "",
-      previousClose: Number.isFinite(Number(item.previousClose))
-        ? String(item.previousClose)
-        : ""
+      symbol: data.symbol || symbol,
+      price,
+      changePercent,
+      change,
+      previousClose
     };
   } catch (error) {
     return null;
   }
-}
-
-async function fetchProfileFromFMP(symbol) {
-  try {
-    const url = `https://financialmodelingprep.com/stable/profile?symbol=${encodeURIComponent(symbol)}&apikey=${FMP_API_KEY}`;
-    const response = await fetch(url);
-    const data = await response.json();
-
-    if (!Array.isArray(data) || !data.length) return null;
-    return data[0];
-  } catch (error) {
-    return null;
-  }
-}
-
-async function fetchQuoteFromAlpha(symbol) {
-  try {
-    const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${ALPHA_API_KEY}`;
-    const response = await fetch(url);
-    const data = await response.json();
-
-    if (data.Note || data.Information || data["Error Message"]) return null;
-
-    const quote = data["Global Quote"];
-    if (!quote || !quote["01. symbol"]) return null;
-
-    const price = Number(quote["05. price"]);
-    if (!Number.isFinite(price) || price <= 0) return null;
-
-    return {
-      symbol: quote["01. symbol"] || symbol,
-      price: price,
-      changePercent: (quote["10. change percent"] || "").replace("%", "").trim(),
-      change: quote["09. change"] || "",
-      previousClose: quote["08. previous close"] || ""
-    };
-  } catch (error) {
-    return null;
-  }
-}
-
-async function fetchRobustQuote(symbol) {
-  const fmpQuote = await fetchQuoteFromFMP(symbol);
-  if (fmpQuote) return fmpQuote;
-
-  const alphaQuote = await fetchQuoteFromAlpha(symbol);
-  if (alphaQuote) return alphaQuote;
-
-  return null;
-}
-
-async function enrichWithProfile(item) {
-  const profile = await fetchProfileFromFMP(item.symbol);
-  if (!profile) return item;
-
-  return {
-    ...item,
-    name: profile.companyName || item.name,
-    currency: profile.currency || item.currency,
-    type: item.type || (profile.isEtf ? "ETF" : item.type),
-    region: item.region || profile.exchangeShortName || item.exchangeShortName || ""
-  };
 }
 
 async function filterQuotableResults(items) {
-  const checked = [];
+  const out = [];
 
   for (const item of items.slice(0, 5)) {
-    const quote = await fetchRobustQuote(item.symbol);
+    const quote = await fetchQuote(item.symbol);
     if (quote) {
-      checked.push({
+      out.push({
         ...item,
         _quote: quote
       });
     }
   }
 
-  return checked;
+  return out;
 }
 
 async function refreshWatchlist() {
@@ -344,7 +285,7 @@ async function refreshWatchlist() {
 
   for (const item of watchlist) {
     try {
-      const quote = await fetchRobustQuote(item.symbol);
+      const quote = await fetchQuote(item.symbol);
 
       refreshed.push({
         ...item,
@@ -434,8 +375,14 @@ function renderResults(items) {
   }
 
   items.forEach((item) => {
+    const symbol = item.symbol || "";
+    const name = item.instrument_name || item.name || "";
+    const type = item.instrument_type || item.type || "-";
+    const region = item.exchange || item.country || "-";
+    const currency = item.currency || "-";
+
     const alreadyAdded = watchlist.some(
-      (w) => normalizeText(w.symbol) === normalizeText(item.symbol)
+      (w) => normalizeText(w.symbol) === normalizeText(symbol)
     );
 
     const row = document.createElement("div");
@@ -445,17 +392,17 @@ function renderResults(items) {
       <div class="left">
         <div class="top-line">
           <div class="identity">
-            <div class="title">${escapeHtml(item.name)}</div>
-            <div class="ticker">${escapeHtml(item.symbol)}</div>
+            <div class="title">${escapeHtml(name)}</div>
+            <div class="ticker">${escapeHtml(symbol)}</div>
           </div>
         </div>
 
         <div class="meta">
-          <div class="meta-line">${escapeHtml(item.type || "-")} • ${escapeHtml(item.region || item.exchangeShortName || "-")} • ${escapeHtml(item.currency || "-")}</div>
+          <div class="meta-line">${escapeHtml(type)} • ${escapeHtml(region)} • ${escapeHtml(currency)}</div>
         </div>
       </div>
 
-      <button class="add-btn" data-symbol="${escapeHtml(item.symbol)}" ${alreadyAdded ? "disabled" : ""}>
+      <button class="add-btn" data-symbol="${escapeHtml(symbol)}" ${alreadyAdded ? "disabled" : ""}>
         ${alreadyAdded ? "Déjà ajoutée" : "Ajouter"}
       </button>
     `;
@@ -476,8 +423,7 @@ function renderResults(items) {
       button.disabled = true;
       button.textContent = "Ajout...";
 
-      const enriched = await enrichWithProfile(item);
-      const quote = item._quote || await fetchRobustQuote(item.symbol);
+      const quote = item._quote || await fetchQuote(item.symbol);
 
       if (!quote) {
         button.textContent = "Pas de cotation";
@@ -485,11 +431,11 @@ function renderResults(items) {
       }
 
       watchlist.push({
-        symbol: enriched.symbol,
-        name: enriched.name,
-        type: enriched.type,
-        region: enriched.region || enriched.exchangeShortName || "",
-        currency: enriched.currency || "",
+        symbol: item.symbol,
+        name: item.instrument_name || item.name || item.symbol,
+        type: item.instrument_type || item.type || "",
+        region: item.exchange || item.country || "",
+        currency: item.currency || "",
         price: quote.price ?? "",
         changePercent: quote.changePercent ?? "",
         change: quote.change ?? "",
@@ -516,25 +462,16 @@ async function searchAssets() {
   resultsBox.innerHTML = "<p>Recherche en cours...</p>";
 
   try {
-    const url = `https://financialmodelingprep.com/stable/search-name?query=${encodeURIComponent(query)}&apikey=${FMP_API_KEY}`;
+    const url = `https://api.twelvedata.com/symbol_search?symbol=${encodeURIComponent(query)}&apikey=${TWELVE_API_KEY}`;
     const response = await fetch(url);
     const data = await response.json();
 
-    if (!Array.isArray(data)) {
+    if (!data || !Array.isArray(data.data)) {
       resultsBox.innerHTML = "<p>Erreur de recherche.</p>";
       return;
     }
 
-    let matches = data.map((item) => ({
-      symbol: item.symbol || "",
-      name: item.name || "",
-      type: item.type || item.instrumentType || "",
-      region: item.exchangeShortName || item.exchange || "",
-      exchangeShortName: item.exchangeShortName || "",
-      currency: item.currency || ""
-    }));
-
-    matches = matches.filter((item) => item.symbol && item.name);
+    let matches = data.data.filter((item) => item.symbol && (item.instrument_name || item.name));
     matches = dedupeResults(matches);
     matches = chooseResults(matches, query);
     matches = await filterQuotableResults(matches);
