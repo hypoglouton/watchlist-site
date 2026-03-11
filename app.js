@@ -1,4 +1,4 @@
-const API_KEY = "355DCVOBSX0C2X75";
+const API_KEY = "YOUR_API_KEY_HERE";
 
 const searchInput = document.getElementById("searchInput");
 const searchButton = document.getElementById("searchButton");
@@ -7,104 +7,46 @@ const watchlistBox = document.getElementById("watchlist");
 
 let watchlist = JSON.parse(localStorage.getItem("watchlist")) || [];
 
-/* =========================
-   ALIAS LOCAUX ETF / ETC
-   ========================= */
-
 const SMART_ALIASES = [
   {
     aliases: [
       "ishares physical gold",
+      "ishares physical gold etc",
       "ishares gold",
       "physical gold",
       "gold ishares",
-      "ishares physical gold etc",
-      "or ishares",
-      "etc or ishares",
       "sgln",
       "igln",
       "egln"
     ],
     candidates: [
       {
-        symbol: "SGLN.LON",
-        apiSymbol: "SGLN.LON",
+        symbol: "EGLN",
+        apiSymbols: ["EGLN.LON", "EGLN"],
         name: "iShares Physical Gold ETC",
-        type: "ETP",
+        type: "ETC",
+        region: "United Kingdom",
+        currency: "EUR"
+      },
+      {
+        symbol: "SGLN",
+        apiSymbols: ["SGLN.LON", "SGLN"],
+        name: "iShares Physical Gold ETC",
+        type: "ETC",
         region: "United Kingdom",
         currency: "USD"
       },
       {
-        symbol: "IGLN.LON",
-        apiSymbol: "IGLN.LON",
+        symbol: "IGLN",
+        apiSymbols: ["IGLN.LON", "IGLN"],
         name: "iShares Physical Gold ETC",
-        type: "ETP",
+        type: "ETC",
         region: "United Kingdom",
-        currency: "GBX"
-      },
-      {
-        symbol: "EGLN.LON",
-        apiSymbol: "EGLN.LON",
-        name: "iShares Physical Gold ETC",
-        type: "ETP",
-        region: "United Kingdom",
-        currency: "EUR"
-      }
-    ]
-  },
-  {
-    aliases: [
-      "amundi msci world",
-      "cw8",
-      "amundi world"
-    ],
-    candidates: [
-      {
-        symbol: "CW8.PAR",
-        apiSymbol: "CW8.PAR",
-        name: "Amundi MSCI World UCITS ETF",
-        type: "ETF",
-        region: "France",
-        currency: "EUR"
-      }
-    ]
-  },
-  {
-    aliases: [
-      "air liquide",
-      "ai"
-    ],
-    candidates: [
-      {
-        symbol: "AI.PAR",
-        apiSymbol: "AI.PAR",
-        name: "Air Liquide SA",
-        type: "Equity",
-        region: "France",
-        currency: "EUR"
-      }
-    ]
-  },
-  {
-    aliases: [
-      "asml"
-    ],
-    candidates: [
-      {
-        symbol: "ASML.AMS",
-        apiSymbol: "ASML.AMS",
-        name: "ASML Holding NV",
-        type: "Equity",
-        region: "Netherlands",
-        currency: "EUR"
+        currency: "USD"
       }
     ]
   }
 ];
-
-/* =========================
-   OUTILS
-   ========================= */
 
 function saveWatchlist() {
   localStorage.setItem("watchlist", JSON.stringify(watchlist));
@@ -150,87 +92,12 @@ function normalizeText(value) {
     .trim();
 }
 
-function isLikelyETF(item) {
-  const type = normalizeText(item.type);
-  const name = normalizeText(item.name);
-  return (
-    type.includes("etf") ||
-    type.includes("etp") ||
-    type.includes("etc") ||
-    name.includes("etf") ||
-    name.includes("etc") ||
-    name.includes("ucits") ||
-    name.includes("ishares") ||
-    name.includes("amundi") ||
-    name.includes("spdr") ||
-    name.includes("xtrackers") ||
-    name.includes("lyxor") ||
-    name.includes("vanguard")
-  );
-}
-
-function isEuropeanRegion(region) {
-  const r = normalizeText(region);
-  return (
-    r.includes("europe") ||
-    r.includes("euronext") ||
-    r.includes("france") ||
-    r.includes("germany") ||
-    r.includes("xetra") ||
-    r.includes("amsterdam") ||
-    r.includes("brussels") ||
-    r.includes("milan") ||
-    r.includes("madrid") ||
-    r.includes("switzerland") ||
-    r.includes("italy") ||
-    r.includes("netherlands") ||
-    r.includes("belgium") ||
-    r.includes("united kingdom")
-  );
-}
-
-function scoreResult(item, query) {
-  const q = normalizeText(query);
-  const symbol = normalizeText(item.symbol);
-  const name = normalizeText(item.name);
-  const region = normalizeText(item.region);
-  const currency = normalizeText(item.currency);
-  const etf = isLikelyETF(item);
-  const europe = isEuropeanRegion(region);
-
-  let score = 0;
-
-  if (symbol === q) score += 1000;
-  if (name === q) score += 900;
-
-  if (symbol.startsWith(q)) score += 220;
-  if (name.startsWith(q)) score += 180;
-
-  if (symbol.includes(q)) score += 120;
-  if (name.includes(q)) score += 100;
-
-  if (europe) score += 80;
-  if (currency === "eur") score += 60;
-
-  if (etf && europe && currency === "eur") score += 180;
-  else if (etf && europe) score += 120;
-  else if (etf) score += 30;
-
-  if (region.includes("united states") || region.includes("us")) score -= 10;
-
-  return score;
-}
-
 function dedupeResults(items) {
   const seen = new Set();
   const deduped = [];
 
   for (const item of items) {
-    const symbol = normalizeText(item.symbol);
-    const name = normalizeText(item.name);
-    const region = normalizeText(item.region);
-    const key = `${symbol}|${name}|${region}`;
-
+    const key = `${normalizeText(item.symbol)}|${normalizeText(item.name)}|${normalizeText(item.region)}|${normalizeText(item.currency)}`;
     if (!seen.has(key)) {
       seen.add(key);
       deduped.push(item);
@@ -242,28 +109,43 @@ function dedupeResults(items) {
 
 function chooseResults(items, query) {
   if (!items.length) return [];
+  const q = normalizeText(query);
 
-  const sorted = [...items]
-    .map((item) => ({ ...item, _score: scoreResult(item, query) }))
-    .sort((a, b) => b._score - a._score);
+  const scored = [...items].map((item) => {
+    let score = 0;
+    const symbol = normalizeText(item.symbol);
+    const name = normalizeText(item.name);
+    const region = normalizeText(item.region);
+    const currency = normalizeText(item.currency);
+    const etfLike = normalizeText(item.type).includes("etf") || normalizeText(item.type).includes("etc");
 
-  const top = sorted[0];
-  const second = sorted[1];
+    if (symbol === q) score += 1000;
+    if (name === q) score += 900;
+    if (symbol.startsWith(q)) score += 200;
+    if (name.startsWith(q)) score += 160;
+    if (symbol.includes(q)) score += 120;
+    if (name.includes(q)) score += 100;
+    if (currency === "eur") score += 70;
+    if (region.includes("france") || region.includes("germany") || region.includes("netherlands") || region.includes("europe") || region.includes("united kingdom")) score += 50;
+    if (etfLike) score += 40;
 
-  if (!second) return [top];
+    return { ...item, _score: score };
+  }).sort((a, b) => b._score - a._score);
 
-  const queryNorm = normalizeText(query);
-  const exactTop =
-    normalizeText(top.symbol) === queryNorm ||
-    normalizeText(top.name) === queryNorm;
+  if (scored.length === 1) return [scored[0]];
 
-  if (exactTop) return [top];
+  const top = scored[0];
+  const second = scored[1];
+
+  if (normalizeText(top.symbol) === q || normalizeText(top.name) === q) {
+    return [top];
+  }
 
   if (top._score - second._score >= 180) {
     return [top];
   }
 
-  return sorted.slice(0, 4);
+  return scored.slice(0, 4);
 }
 
 function findLocalAliasMatches(query) {
@@ -283,26 +165,22 @@ function findLocalAliasMatches(query) {
   return [];
 }
 
-/* =========================
-   API
-   ========================= */
-
-async function fetchQuote(symbol) {
-  const cleanSymbol = symbol.includes(".") ? symbol : symbol;
-
-  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(cleanSymbol)}&apikey=${API_KEY}`;
-
+async function fetchQuoteRaw(symbol) {
+  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${API_KEY}`;
   const response = await fetch(url);
   const data = await response.json();
 
-  const quote = data["Global Quote"];
+  if (data.Note) {
+    throw new Error("API_LIMIT");
+  }
 
+  const quote = data["Global Quote"];
   if (!quote || !quote["01. symbol"]) {
     return null;
   }
 
   return {
-    symbol: quote["01. symbol"] || cleanSymbol,
+    symbol: quote["01. symbol"] || symbol,
     price: quote["05. price"] || "",
     changePercent: (quote["10. change percent"] || "").replace("%", "").trim(),
     change: quote["09. change"] || "",
@@ -310,9 +188,25 @@ async function fetchQuote(symbol) {
   };
 }
 
-/* =========================
-   WATCHLIST
-   ========================= */
+async function fetchQuoteWithFallback(symbols) {
+  const list = Array.isArray(symbols) ? symbols : [symbols];
+
+  for (const symbol of list) {
+    try {
+      const quote = await fetchQuoteRaw(symbol);
+      if (quote && quote.price) {
+        return {
+          ...quote,
+          resolvedApiSymbol: symbol
+        };
+      }
+    } catch (error) {
+      if (error.message === "API_LIMIT") throw error;
+    }
+  }
+
+  return null;
+}
 
 async function refreshWatchlist() {
   watchlistBox.innerHTML = "<p>Chargement des cours...</p>";
@@ -326,15 +220,18 @@ async function refreshWatchlist() {
 
   for (const item of watchlist) {
     try {
-      if (!item.apiSymbol) {
-        refreshed.push(item);
-        continue;
-      }
+      const candidateSymbols =
+        item.apiSymbols && item.apiSymbols.length
+          ? item.apiSymbols
+          : item.apiSymbol
+            ? [item.apiSymbol]
+            : [item.symbol];
 
-      const quote = await fetchQuote(item.apiSymbol);
+      const quote = await fetchQuoteWithFallback(candidateSymbols);
 
       refreshed.push({
         ...item,
+        apiSymbol: quote?.resolvedApiSymbol || item.apiSymbol || item.symbol,
         price: quote?.price || item.price || "",
         changePercent: quote?.changePercent || item.changePercent || "",
         change: quote?.change || item.change || "",
@@ -412,10 +309,6 @@ function renderWatchlist() {
   });
 }
 
-/* =========================
-   RESULTATS
-   ========================= */
-
 function renderResults(items) {
   resultsBox.innerHTML = "";
 
@@ -425,9 +318,7 @@ function renderResults(items) {
   }
 
   items.forEach((item) => {
-    const alreadyAdded = watchlist.some(
-      (w) => normalizeText(w.symbol) === normalizeText(item.symbol)
-    );
+    const alreadyAdded = watchlist.some((w) => normalizeText(w.symbol) === normalizeText(item.symbol));
 
     const row = document.createElement("div");
     row.className = "card";
@@ -459,9 +350,7 @@ function renderResults(items) {
       const item = items.find((asset) => asset.symbol === button.dataset.symbol);
       if (!item) return;
 
-      const exists = watchlist.some(
-        (w) => normalizeText(w.symbol) === normalizeText(item.symbol)
-      );
+      const exists = watchlist.some((w) => normalizeText(w.symbol) === normalizeText(item.symbol));
       if (exists) return;
 
       button.disabled = true;
@@ -470,14 +359,15 @@ function renderResults(items) {
       let quote = null;
 
       try {
-        quote = await fetchQuote(item.apiSymbol || item.symbol);
+        quote = await fetchQuoteWithFallback(item.apiSymbols || item.apiSymbol || item.symbol);
       } catch (error) {
         quote = null;
       }
 
       watchlist.push({
         symbol: item.symbol,
-        apiSymbol: item.apiSymbol || item.symbol,
+        apiSymbol: quote?.resolvedApiSymbol || item.apiSymbol || item.symbol,
+        apiSymbols: item.apiSymbols || (item.apiSymbol ? [item.apiSymbol] : [item.symbol]),
         name: item.name,
         type: item.type,
         region: item.region,
@@ -497,10 +387,6 @@ function renderResults(items) {
   });
 }
 
-/* =========================
-   RECHERCHE
-   ========================= */
-
 async function searchAssets() {
   const query = searchInput.value.trim();
 
@@ -512,16 +398,13 @@ async function searchAssets() {
   resultsBox.innerHTML = "<p>Recherche en cours...</p>";
 
   const localMatches = findLocalAliasMatches(query);
-
   if (localMatches.length > 0) {
-    const finalLocal = chooseResults(dedupeResults(localMatches), query);
-    renderResults(finalLocal);
+    renderResults(chooseResults(dedupeResults(localMatches), query));
     return;
   }
 
   try {
     const url = `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${API_KEY}`;
-
     const response = await fetch(url);
     const data = await response.json();
 
@@ -533,14 +416,11 @@ async function searchAssets() {
     let matches = (data.bestMatches || []).map((item) => ({
       symbol: item["1. symbol"] || "",
       apiSymbol: item["1. symbol"] || "",
+      apiSymbols: [item["1. symbol"] || ""],
       name: item["2. name"] || "",
       type: item["3. type"] || "",
       region: item["4. region"] || "",
-      marketOpen: item["5. marketOpen"] || "",
-      marketClose: item["6. marketClose"] || "",
-      timezone: item["7. timezone"] || "",
-      currency: item["8. currency"] || "",
-      matchScore: item["9. matchScore"] || ""
+      currency: item["8. currency"] || ""
     }));
 
     matches = matches.filter((item) => item.symbol && item.name);
@@ -554,7 +434,6 @@ async function searchAssets() {
 }
 
 searchButton.addEventListener("click", searchAssets);
-
 searchInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     searchAssets();
