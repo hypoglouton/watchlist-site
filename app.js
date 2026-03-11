@@ -27,10 +27,19 @@ function formatPrice(value) {
 }
 
 function formatPercent(value) {
-  const num = Number(value);
+  const cleaned = String(value ?? "").replace("%", "").trim();
+  const num = Number(cleaned);
   if (Number.isNaN(num)) return "-";
   const sign = num > 0 ? "+" : "";
-  return `${sign}${num.toFixed(2)} %`;
+  return `${sign}${num.toFixed(2)}%`;
+}
+
+function getChangeClass(value) {
+  const num = Number(String(value ?? "").replace("%", "").trim());
+  if (Number.isNaN(num)) return "neutral";
+  if (num > 0) return "positive";
+  if (num < 0) return "negative";
+  return "neutral";
 }
 
 function normalizeText(value) {
@@ -118,6 +127,7 @@ function dedupeResults(items) {
     const name = normalizeText(item.name);
     const region = normalizeText(item.region);
     const key = `${symbol}|${name}|${region}`;
+
     if (!seen.has(key)) {
       seen.add(key);
       deduped.push(item);
@@ -219,7 +229,7 @@ function renderWatchlist() {
   }
 
   const toolbar = document.createElement("div");
-  toolbar.style.marginBottom = "12px";
+  toolbar.className = "toolbar";
   toolbar.innerHTML = `<button id="refreshWatchlistBtn">Rafraîchir les cours</button>`;
   watchlistBox.appendChild(toolbar);
 
@@ -230,13 +240,28 @@ function renderWatchlist() {
     const priceText = item.price ? formatPrice(item.price) : "-";
     const percentText = item.changePercent ? formatPercent(item.changePercent) : "-";
     const prevCloseText = item.previousClose ? formatPrice(item.previousClose) : "-";
+    const changeClass = getChangeClass(item.changePercent);
 
     row.innerHTML = `
-      <div>
-        <div class="title">${escapeHtml(item.name)} (${escapeHtml(item.symbol)})</div>
-        <div class="meta">${escapeHtml(item.type || "-")} • ${escapeHtml(item.region || "-")} • ${escapeHtml(item.currency || "-")}</div>
-        <div class="meta">Prix : ${priceText} | Var. jour : ${percentText} | Clôture précédente : ${prevCloseText}</div>
+      <div class="left">
+        <div class="top-line">
+          <div class="identity">
+            <div class="title">${escapeHtml(item.name)}</div>
+            <div class="ticker">${escapeHtml(item.symbol)}</div>
+          </div>
+
+          <div class="price-box">
+            <div class="price ${changeClass}">${priceText}</div>
+            <div class="change ${changeClass}">${percentText}</div>
+          </div>
+        </div>
+
+        <div class="meta">
+          <div class="meta-line">${escapeHtml(item.type || "-")} • ${escapeHtml(item.region || "-")} • ${escapeHtml(item.currency || "-")}</div>
+          <div class="meta-line">Clôture précédente : ${prevCloseText}</div>
+        </div>
       </div>
+
       <button class="remove-btn" data-symbol="${escapeHtml(item.symbol)}">Retirer</button>
     `;
 
@@ -272,10 +297,19 @@ function renderResults(items) {
     row.className = "card";
 
     row.innerHTML = `
-      <div>
-        <div class="title">${escapeHtml(item.name)} (${escapeHtml(item.symbol)})</div>
-        <div class="meta">${escapeHtml(item.type || "-")} • ${escapeHtml(item.region || "-")} • ${escapeHtml(item.currency || "-")}</div>
+      <div class="left">
+        <div class="top-line">
+          <div class="identity">
+            <div class="title">${escapeHtml(item.name)}</div>
+            <div class="ticker">${escapeHtml(item.symbol)}</div>
+          </div>
+        </div>
+
+        <div class="meta">
+          <div class="meta-line">${escapeHtml(item.type || "-")} • ${escapeHtml(item.region || "-")} • ${escapeHtml(item.currency || "-")}</div>
+        </div>
       </div>
+
       <button class="add-btn" data-symbol="${escapeHtml(item.symbol)}" ${alreadyAdded ? "disabled" : ""}>
         ${alreadyAdded ? "Déjà ajoutée" : "Ajouter"}
       </button>
