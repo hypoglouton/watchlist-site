@@ -33,9 +33,128 @@ function formatPercent(value) {
   return `${sign}${num.toFixed(2)} %`;
 }
 
+function normalizeText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function isLikelyETF(item) {
+  const type = normalizeText(item.type);
+  const name = normalizeText(item.name);
+  return (
+    type.includes("etf") ||
+    name.includes("etf") ||
+    name.includes("ucits") ||
+    name.includes("ishares") ||
+    name.includes("amundi") ||
+    name.includes("spdr") ||
+    name.includes("xtrackers") ||
+    name.includes("lyxor") ||
+    name.includes("vanguard")
+  );
+}
+
+function isEuropeanRegion(region) {
+  const r = normalizeText(region);
+  return (
+    r.includes("europe") ||
+    r.includes("euronext") ||
+    r.includes("france") ||
+    r.includes("germany") ||
+    r.includes("xetra") ||
+    r.includes("amsterdam") ||
+    r.includes("brussels") ||
+    r.includes("milan") ||
+    r.includes("madrid") ||
+    r.includes("switzerland") ||
+    r.includes("italy") ||
+    r.includes("netherlands") ||
+    r.includes("belgium")
+  );
+}
+
+function scoreResult(item, query) {
+  const q = normalizeText(query);
+  const symbol = normalizeText(item.symbol);
+  const name = normalizeText(item.name);
+  const region = normalizeText(item.region);
+  const currency = normalizeText(item.currency);
+  const etf = isLikelyETF(item);
+  const europe = isEuropeanRegion(region);
+
+  let score = 0;
+
+  if (symbol === q) score += 1000;
+  if (name === q) score += 900;
+
+  if (symbol.startsWith(q)) score += 220;
+  if (name.startsWith(q)) score += 180;
+
+  if (symbol.includes(q)) score += 120;
+  if (name.includes(q)) score += 100;
+
+  if (europe) score += 80;
+  if (currency === "eur") score += 60;
+
+  if (etf && europe && currency === "eur") score += 140;
+  else if (etf && europe) score += 110;
+  else if (etf) score += 30;
+
+  if (region.includes("united states") || region.includes("us")) score -= 10;
+
+  return score;
+}
+
+function dedupeResults(items) {
+  const seen = new Set();
+  const deduped = [];
+
+  for (const item of items) {
+    const symbol = normalizeText(item.symbol);
+    const name = normalizeText(item.name);
+    const region = normalizeText(item.region);
+    const key = `${symbol}|${name}|${region}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(item);
+    }
+  }
+
+  return deduped;
+}
+
+function chooseResults(items, query) {
+  if (!items.length) return [];
+
+  const sorted = [...items]
+    .map((item) => ({ ...item, _score: scoreResult(item, query) }))
+    .sort((a, b) => b._score - a._score);
+
+  const top = sorted[0];
+  const second = sorted[1];
+
+  if (!second) return [top];
+
+  const queryNorm = normalizeText(query);
+  const exactTop =
+    normalizeText(top.symbol) === queryNorm ||
+    normalizeText(top.name) === queryNorm;
+
+  if (exactTop) return [top];
+
+  if (top._score - second._score >= 180) {
+    return [top];
+  }
+
+  return sorted.slice(0, 4);
+}
+
 async function fetchQuote(symbol) {
-  const url =
-    `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${API_KEY}`;
+  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${API_KEY}`;
 
   const response = await fetch(url);
   const data = await response.json();
@@ -67,7 +186,13 @@ async function refreshWatchlist() {
 
   for (const item of watchlist) {
     try {
+      if (!item.symbol) {
+        refreshed.push(item);
+        continue;
+      }
+
       const quote = await fetchQuote(item.symbol);
+
       refreshed.push({
         ...item,
         price: quote?.price || item.price || "",
@@ -102,14 +227,14 @@ function renderWatchlist() {
     const row = document.createElement("div");
     row.className = "card";
 
-    const priceText = item.price ? `${formatPrice(item.price)}` : "-";
+    const priceText = item.price ? formatPrice(item.price) : "-";
     const percentText = item.changePercent ? formatPercent(item.changePercent) : "-";
     const prevCloseText = item.previousClose ? formatPrice(item.previousClose) : "-";
 
     row.innerHTML = `
       <div>
         <div class="title">${escapeHtml(item.name)} (${escapeHtml(item.symbol)})</div>
-        <div class="meta">${escapeHtml(item.type)} • ${escapeHtml(item.region || "-")}</div>
+        <div class="meta">${escapeHtml(item.type || "-")} • ${escapeHtml(item.region || "-")} • ${escapeHtml(item.currency || "-")}</div>
         <div class="meta">Prix : ${priceText} | Var. jour : ${percentText} | Clôture précédente : ${prevCloseText}</div>
       </div>
       <button class="remove-btn" data-symbol="${escapeHtml(item.symbol)}">Retirer</button>
@@ -141,7 +266,7 @@ function renderResults(items) {
   }
 
   items.forEach((item) => {
-    const alreadyAdded = watchlist.some((w) => w.symbol === item.symbol);
+    const alreadyAdded = watchlist.some((w) => normalizeText(w.symbol) === normalizeText(item.symbol));
 
     const row = document.createElement("div");
     row.className = "card";
@@ -149,7 +274,7 @@ function renderResults(items) {
     row.innerHTML = `
       <div>
         <div class="title">${escapeHtml(item.name)} (${escapeHtml(item.symbol)})</div>
-        <div class="meta">${escapeHtml(item.type)} • ${escapeHtml(item.region || "-")} • ${escapeHtml(item.currency || "-")}</div>
+        <div class="meta">${escapeHtml(item.type || "-")} • ${escapeHtml(item.region || "-")} • ${escapeHtml(item.currency || "-")}</div>
       </div>
       <button class="add-btn" data-symbol="${escapeHtml(item.symbol)}" ${alreadyAdded ? "disabled" : ""}>
         ${alreadyAdded ? "Déjà ajoutée" : "Ajouter"}
@@ -164,7 +289,7 @@ function renderResults(items) {
       const item = items.find((asset) => asset.symbol === button.dataset.symbol);
       if (!item) return;
 
-      const exists = watchlist.some((w) => w.symbol === item.symbol);
+      const exists = watchlist.some((w) => normalizeText(w.symbol) === normalizeText(item.symbol));
       if (exists) return;
 
       button.disabled = true;
@@ -179,7 +304,11 @@ function renderResults(items) {
       }
 
       watchlist.push({
-        ...item,
+        symbol: item.symbol,
+        name: item.name,
+        type: item.type,
+        region: item.region,
+        currency: item.currency,
         price: quote?.price || "",
         changePercent: quote?.changePercent || "",
         change: quote?.change || "",
@@ -206,8 +335,7 @@ async function searchAssets() {
   resultsBox.innerHTML = "<p>Recherche en cours...</p>";
 
   try {
-    const url =
-      `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${API_KEY}`;
+    const url = `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${API_KEY}`;
 
     const response = await fetch(url);
     const data = await response.json();
@@ -217,7 +345,7 @@ async function searchAssets() {
       return;
     }
 
-    const matches = (data.bestMatches || []).slice(0, 10).map((item) => ({
+    let matches = (data.bestMatches || []).map((item) => ({
       symbol: item["1. symbol"] || "",
       name: item["2. name"] || "",
       type: item["3. type"] || "",
@@ -228,6 +356,10 @@ async function searchAssets() {
       currency: item["8. currency"] || "",
       matchScore: item["9. matchScore"] || "",
     }));
+
+    matches = matches.filter((item) => item.symbol && item.name);
+    matches = dedupeResults(matches);
+    matches = chooseResults(matches, query);
 
     renderResults(matches);
   } catch (error) {
