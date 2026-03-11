@@ -5,110 +5,258 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ma Watchlist</title>
   <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #121b2e;
+      --panel-2: #0f172a;
+      --border: #243047;
+      --text: #e5edf8;
+      --muted: #8ea0bd;
+      --blue: #3b82f6;
+      --green: #22c55e;
+      --red: #ef4444;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: Arial, sans-serif;
       margin: 0;
       padding: 24px;
-      background: #0f172a;
-      color: #e2e8f0;
+      font-family: Arial, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(59,130,246,0.14), transparent 28%),
+        radial-gradient(circle at top right, rgba(34,197,94,0.08), transparent 24%),
+        linear-gradient(180deg, #0b1220 0%, #0a1020 100%);
+      color: var(--text);
     }
 
     .container {
-      max-width: 900px;
+      max-width: 980px;
       margin: 0 auto;
     }
 
     h1 {
-      margin-bottom: 8px;
+      margin: 0 0 8px 0;
+      font-size: 34px;
+      line-height: 1.1;
     }
 
-    p {
-      color: #94a3b8;
+    .intro {
+      margin: 0 0 22px 0;
+      color: var(--muted);
+      font-size: 15px;
     }
 
-    .search-box, .section {
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 16px;
-      margin-top: 20px;
+    .search-box,
+    .section {
+      background: linear-gradient(180deg, rgba(18,27,46,0.96), rgba(15,23,42,0.96));
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+    }
+
+    .section {
+      margin-top: 22px;
     }
 
     .row {
       display: flex;
-      gap: 10px;
+      gap: 12px;
       flex-wrap: wrap;
+      align-items: center;
     }
 
     input {
       flex: 1;
       min-width: 220px;
-      padding: 12px;
-      border-radius: 10px;
-      border: 1px solid #475569;
-      background: #0f172a;
-      color: #e2e8f0;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 1px solid #31415f;
+      background: #0b1220;
+      color: var(--text);
+      font-size: 15px;
+      outline: none;
+    }
+
+    input::placeholder {
+      color: #70819d;
+    }
+
+    input:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.16);
     }
 
     button {
-      padding: 12px 16px;
+      padding: 13px 18px;
       border: none;
-      border-radius: 10px;
-      background: #2563eb;
+      border-radius: 12px;
+      background: linear-gradient(180deg, #3b82f6, #2563eb);
       color: white;
       cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:hover {
+      filter: brightness(1.06);
     }
 
     button:disabled {
       background: #475569;
       cursor: not-allowed;
+      filter: none;
+    }
+
+    .label {
+      margin: 0 0 12px 0;
+      font-size: 20px;
+    }
+
+    .results-wrap {
+      margin-top: 14px;
     }
 
     .card {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 12px;
-      padding: 14px;
-      border: 1px solid #334155;
-      border-radius: 10px;
+      gap: 16px;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
       margin-top: 12px;
-      background: #0f172a;
+      background: linear-gradient(180deg, rgba(11,18,32,0.95), rgba(9,14,26,0.95));
+    }
+
+    .left {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .top-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+
+    .identity {
+      min-width: 220px;
+      flex: 1;
     }
 
     .title {
+      font-size: 19px;
+      line-height: 1.2;
+      color: #f4f7fb;
+    }
+
+    .ticker {
+      color: #9db1cf;
+      font-size: 14px;
+      margin-top: 4px;
+    }
+
+    .price-box {
+      text-align: right;
+      min-width: 170px;
+    }
+
+    .price {
+      font-size: 30px;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+
+    .change {
       font-size: 16px;
-      font-weight: 600;
+    }
+
+    .positive {
+      color: var(--green);
+    }
+
+    .negative {
+      color: var(--red);
+    }
+
+    .neutral {
+      color: #c7d2e3;
     }
 
     .meta {
       font-size: 13px;
-      color: #94a3b8;
-      margin-top: 4px;
+      color: var(--muted);
+      margin-top: 10px;
+      line-height: 1.5;
+    }
+
+    .meta-line {
+      margin-top: 6px;
     }
 
     .remove-btn {
-      background: #dc2626;
+      background: linear-gradient(180deg, #ef4444, #dc2626);
+      flex-shrink: 0;
     }
 
-    .label {
-      margin-top: 0;
-      margin-bottom: 10px;
-      font-size: 18px;
+    .toolbar {
+      margin-bottom: 12px;
+    }
+
+    @media (max-width: 700px) {
+      body {
+        padding: 16px;
+      }
+
+      h1 {
+        font-size: 28px;
+      }
+
+      .card {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .top-line {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+      }
+
+      .price-box {
+        text-align: left;
+        min-width: 0;
+      }
+
+      .price {
+        font-size: 28px;
+      }
+
+      .remove-btn,
+      .add-btn {
+        width: 100%;
+      }
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Ma Watchlist</h1>
-    <p>Recherche par nom ou ticker, puis ajoute les valeurs à ta watchlist.</p>
+    <p class="intro">Recherche par nom ou ticker, puis ajoute les valeurs à ta watchlist.</p>
 
     <div class="search-box">
       <div class="row">
         <input id="searchInput" type="text" placeholder="Exemple : Microsoft, MSFT, CW8..." />
         <button id="searchButton">Rechercher</button>
       </div>
-      <div id="results" style="margin-top: 14px;"></div>
+      <div id="results" class="results-wrap"></div>
     </div>
 
     <div class="section">
