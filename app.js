@@ -23,21 +23,20 @@ function escapeHtml(value) {
 
 function formatPrice(value) {
   const num = Number(value);
-  if (Number.isNaN(num)) return "-";
+  if (!Number.isFinite(num)) return "-";
   return num.toFixed(2);
 }
 
 function formatPercent(value) {
-  const cleaned = String(value ?? "").replace("%", "").trim();
-  const num = Number(cleaned);
-  if (Number.isNaN(num)) return "-";
+  const num = Number(String(value ?? "").replace("%", "").trim());
+  if (!Number.isFinite(num)) return "-";
   const sign = num > 0 ? "+" : "";
   return `${sign}${num.toFixed(2)}%`;
 }
 
 function getChangeClass(value) {
   const num = Number(String(value ?? "").replace("%", "").trim());
-  if (Number.isNaN(num)) return "neutral";
+  if (!Number.isFinite(num)) return "neutral";
   if (num > 0) return "positive";
   if (num < 0) return "negative";
   return "neutral";
@@ -89,8 +88,7 @@ function similarityScore(a, b) {
   const t = normalizeCompact(b);
   const maxLen = Math.max(s.length, t.length);
   if (maxLen === 0) return 1;
-  const dist = levenshtein(s, t);
-  return 1 - dist / maxLen;
+  return 1 - levenshtein(s, t) / maxLen;
 }
 
 function isLikelyETF(item) {
@@ -114,7 +112,6 @@ function isEuropeanRegion(region, exchange) {
   const r = normalizeText(region);
   const e = normalizeText(exchange);
   return (
-    r.includes("europe") ||
     r.includes("france") ||
     r.includes("germany") ||
     r.includes("netherlands") ||
@@ -135,17 +132,17 @@ function isEuropeanRegion(region, exchange) {
 
 function dedupeResults(items) {
   const seen = new Set();
-  const deduped = [];
+  const out = [];
 
   for (const item of items) {
     const key = `${normalizeText(item.symbol)}|${normalizeText(item.name)}|${normalizeText(item.exchangeShortName || item.exchange || "")}`;
     if (!seen.has(key)) {
       seen.add(key);
-      deduped.push(item);
+      out.push(item);
     }
   }
 
-  return deduped;
+  return out;
 }
 
 function isGoodMatch(item, query) {
@@ -163,15 +160,10 @@ function isGoodMatch(item, query) {
   const symbolSim = similarityScore(symbol, q);
   const nameSim = similarityScore(name, q);
 
-  if (q.length <= 3) {
-    return symbol === q || symbol.startsWith(q);
-  }
+  if (q.length <= 3) return symbol === q || symbol.startsWith(q);
+  if (q.length <= 5) return symbolSim >= 0.82 || nameSim >= 0.74;
 
-  if (q.length <= 5) {
-    return symbolSim >= 0.8 || nameSim >= 0.72;
-  }
-
-  return symbolSim >= 0.72 || nameSim >= 0.68;
+  return symbolSim >= 0.74 || nameSim >= 0.69;
 }
 
 function scoreResult(item, query) {
@@ -190,7 +182,7 @@ function scoreResult(item, query) {
   if (name === q) score += 1700;
 
   if (symbol.startsWith(q)) score += 500;
-  if (name.startsWith(q)) score += 300;
+  if (name.startsWith(q)) score += 320;
 
   if (symbol.includes(q)) score += 180;
   if (name.includes(q)) score += 130;
@@ -212,7 +204,6 @@ function chooseResults(items, query) {
   if (!items.length) return [];
 
   const filtered = items.filter((item) => isGoodMatch(item, query));
-
   if (!filtered.length) return [];
 
   const sorted = [...filtered]
@@ -234,31 +225,96 @@ function chooseResults(items, query) {
   return sorted.slice(0, 5);
 }
 
-async function fetchQuote(symbol) {
-  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${ALPHA_API_KEY}`;
-  const response = await fetch(url);
-  const data = await response.json();
+async function fetchQuoteFromFMP(symbol) {
+  try {
+    const url = `https://financialmodelingprep.com/stable/quote-short?symbol=${encodeURIComponent(symbol)}&apikey=${FMP_API_KEY}`;
+    const response = await fetch(url);
+    const data = await response.json();
 
-  if (data.Note || data.Information || data["Error Message"]) {
+    if (!Array.isArray(data) || !data.length) return null;
+
+    const item = data[0];
+    const price = Number(item.price);
+
+    if (!Number.isFinite(price) || price <= 0) return null;
+
+    return {
+      symbol: item.symbol || symbol,
+      price: price,
+      changePercent: "",
+      change: "",
+      previousClose: ""
+    };
+  } catch (error) {
     return null;
   }
+}
 
-  const quote = data["Global Quote"];
-  if (!quote || !quote["01. symbol"]) {
+async function fetchProfileFromFMP(symbol) {
+  try {
+    const url = `https://financialmodelingprep.com/stable/profile?symbol=${encodeURIComponent(symbol)}&apikey=${FMP_API_KEY}`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!Array.isArray(data) || !data.length) return null;
+    return data[0];
+  } catch (error) {
     return null;
   }
+}
 
-  const price = Number(quote["05. price"]);
-  if (!Number.isFinite(price) || price <= 0) {
+async function fetchQuoteFromAlpha(symbol) {
+  try {
+    const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${ALPHA_API_KEY}`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.Note || data.Information || data["Error Message"]) {
+      return null;
+    }
+
+    const quote = data["Global Quote"];
+    if (!quote || !quote["01. symbol"]) return null;
+
+    const price = Number(quote["05. price"]);
+    if (!Number.isFinite(price) || price <= 0) return null;
+
+    return {
+      symbol: quote["01. symbol"] || symbol,
+      price: price,
+      changePercent: (quote["10. change percent"] || "").replace("%", "").trim(),
+      change: quote["09. change"] || "",
+      previousClose: quote["08. previous close"] || ""
+    };
+  } catch (error) {
     return null;
   }
+}
+
+async function fetchRobustQuote(symbol) {
+  const fmpQuote = await fetchQuoteFromFMP(symbol);
+  if (fmpQuote) {
+    return fmpQuote;
+  }
+
+  const alphaQuote = await fetchQuoteFromAlpha(symbol);
+  if (alphaQuote) {
+    return alphaQuote;
+  }
+
+  return null;
+}
+
+async function enrichWithProfile(item) {
+  const profile = await fetchProfileFromFMP(item.symbol);
+  if (!profile) return item;
 
   return {
-    symbol: quote["01. symbol"] || symbol,
-    price: quote["05. price"] || "",
-    changePercent: (quote["10. change percent"] || "").replace("%", "").trim(),
-    change: quote["09. change"] || "",
-    previousClose: quote["08. previous close"] || "",
+    ...item,
+    name: profile.companyName || item.name,
+    currency: profile.currency || item.currency,
+    type: item.type || profile.isEtf ? "ETF" : item.type,
+    region: item.region || profile.exchangeShortName || item.exchangeShortName || ""
   };
 }
 
@@ -274,19 +330,14 @@ async function refreshWatchlist() {
 
   for (const item of watchlist) {
     try {
-      if (!item.symbol) {
-        refreshed.push(item);
-        continue;
-      }
-
-      const quote = await fetchQuote(item.symbol);
+      const quote = await fetchRobustQuote(item.symbol);
 
       refreshed.push({
         ...item,
-        price: quote?.price || item.price || "",
-        changePercent: quote?.changePercent || item.changePercent || "",
-        change: quote?.change || item.change || "",
-        previousClose: quote?.previousClose || item.previousClose || "",
+        price: quote?.price ?? item.price ?? "",
+        changePercent: quote?.changePercent ?? item.changePercent ?? "",
+        change: quote?.change ?? item.change ?? "",
+        previousClose: quote?.previousClose ?? item.previousClose ?? ""
       });
     } catch (error) {
       refreshed.push(item);
@@ -411,13 +462,8 @@ function renderResults(items) {
       button.disabled = true;
       button.textContent = "Vérification...";
 
-      let quote = null;
-
-      try {
-        quote = await fetchQuote(item.symbol);
-      } catch (error) {
-        quote = null;
-      }
+      const enriched = await enrichWithProfile(item);
+      const quote = await fetchRobustQuote(item.symbol);
 
       if (!quote) {
         button.textContent = "Pas de cotation";
@@ -425,15 +471,15 @@ function renderResults(items) {
       }
 
       watchlist.push({
-        symbol: item.symbol,
-        name: item.name,
-        type: item.type,
-        region: item.region || item.exchangeShortName || "",
-        currency: item.currency || "",
-        price: quote.price || "",
-        changePercent: quote.changePercent || "",
-        change: quote.change || "",
-        previousClose: quote.previousClose || "",
+        symbol: enriched.symbol,
+        name: enriched.name,
+        type: enriched.type,
+        region: enriched.region || enriched.exchangeShortName || "",
+        currency: enriched.currency || "",
+        price: quote.price ?? "",
+        changePercent: quote.changePercent ?? "",
+        change: quote.change ?? "",
+        previousClose: quote.previousClose ?? ""
       });
 
       saveWatchlist();
@@ -471,7 +517,7 @@ async function searchAssets() {
       type: item.type || item.instrumentType || "",
       region: item.exchangeShortName || item.exchange || "",
       exchangeShortName: item.exchangeShortName || "",
-      currency: item.currency || "",
+      currency: item.currency || ""
     }));
 
     matches = matches.filter((item) => item.symbol && item.name);
