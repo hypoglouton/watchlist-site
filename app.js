@@ -49,7 +49,48 @@ function normalizeText(value) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9.]+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeCompact(value) {
+  return normalizeText(value).replace(/\s+/g, "");
+}
+
+function levenshtein(a, b) {
+  const s = normalizeCompact(a);
+  const t = normalizeCompact(b);
+
+  if (s === t) return 0;
+  if (!s.length) return t.length;
+  if (!t.length) return s.length;
+
+  const dp = Array.from({ length: s.length + 1 }, () => new Array(t.length + 1).fill(0));
+
+  for (let i = 0; i <= s.length; i++) dp[i][0] = i;
+  for (let j = 0; j <= t.length; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= s.length; i++) {
+    for (let j = 1; j <= t.length; j++) {
+      const cost = s[i - 1] === t[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return dp[s.length][t.length];
+}
+
+function similarityScore(a, b) {
+  const s = normalizeCompact(a);
+  const t = normalizeCompact(b);
+  const maxLen = Math.max(s.length, t.length);
+  if (maxLen === 0) return 1;
+  const dist = levenshtein(s, t);
+  return 1 - dist / maxLen;
 }
 
 function isLikelyETF(item) {
@@ -86,39 +127,10 @@ function isEuropeanRegion(region, exchange) {
     e.includes("euronext") ||
     e.includes("xetra") ||
     e.includes("frankfurt") ||
-    e.includes("amsterdam")
+    e.includes("amsterdam") ||
+    e.includes("lse") ||
+    e.includes("london")
   );
-}
-
-function scoreResult(item, query) {
-  const q = normalizeText(query);
-  const symbol = normalizeText(item.symbol);
-  const name = normalizeText(item.name);
-  const region = normalizeText(item.region);
-  const exchange = normalizeText(item.exchangeShortName || item.exchange || "");
-  const currency = normalizeText(item.currency);
-  const etf = isLikelyETF(item);
-  const europe = isEuropeanRegion(region, exchange);
-
-  let score = 0;
-
-  if (symbol === q) score += 1000;
-  if (name === q) score += 900;
-
-  if (symbol.startsWith(q)) score += 240;
-  if (name.startsWith(q)) score += 180;
-
-  if (symbol.includes(q)) score += 130;
-  if (name.includes(q)) score += 100;
-
-  if (europe) score += 80;
-  if (currency === "eur") score += 60;
-
-  if (etf && europe && currency === "eur") score += 140;
-  else if (etf && europe) score += 100;
-  else if (etf) score += 30;
-
-  return score;
 }
 
 function dedupeResults(items) {
@@ -136,35 +148,94 @@ function dedupeResults(items) {
   return deduped;
 }
 
+function isGoodMatch(item, query) {
+  const q = normalizeCompact(query);
+  const symbol = normalizeCompact(item.symbol);
+  const name = normalizeCompact(item.name);
+
+  if (!q || !symbol || !name) return false;
+
+  if (symbol === q || name === q) return true;
+  if (symbol.startsWith(q)) return true;
+  if (name.startsWith(q)) return true;
+  if (name.includes(q) && q.length >= 4) return true;
+
+  const symbolSim = similarityScore(symbol, q);
+  const nameSim = similarityScore(name, q);
+
+  if (q.length <= 3) {
+    return symbol === q || symbol.startsWith(q);
+  }
+
+  if (q.length <= 5) {
+    return symbolSim >= 0.8 || nameSim >= 0.72;
+  }
+
+  return symbolSim >= 0.72 || nameSim >= 0.68;
+}
+
+function scoreResult(item, query) {
+  const q = normalizeCompact(query);
+  const symbol = normalizeCompact(item.symbol);
+  const name = normalizeCompact(item.name);
+  const region = normalizeText(item.region);
+  const exchange = normalizeText(item.exchangeShortName || item.exchange || "");
+  const currency = normalizeText(item.currency);
+  const etf = isLikelyETF(item);
+  const europe = isEuropeanRegion(region, exchange);
+
+  let score = 0;
+
+  if (symbol === q) score += 2000;
+  if (name === q) score += 1700;
+
+  if (symbol.startsWith(q)) score += 500;
+  if (name.startsWith(q)) score += 300;
+
+  if (symbol.includes(q)) score += 180;
+  if (name.includes(q)) score += 130;
+
+  score += Math.round(similarityScore(symbol, q) * 220);
+  score += Math.round(similarityScore(name, q) * 160);
+
+  if (europe) score += 80;
+  if (currency === "eur") score += 60;
+
+  if (etf && europe && currency === "eur") score += 140;
+  else if (etf && europe) score += 100;
+  else if (etf) score += 30;
+
+  return score;
+}
+
 function chooseResults(items, query) {
   if (!items.length) return [];
 
-  const sorted = [...items]
+  const filtered = items.filter((item) => isGoodMatch(item, query));
+
+  if (!filtered.length) return [];
+
+  const sorted = [...filtered]
     .map((item) => ({ ...item, _score: scoreResult(item, query) }))
     .sort((a, b) => b._score - a._score);
 
   const top = sorted[0];
   const second = sorted[1];
+  const queryNorm = normalizeCompact(query);
+
+  const exactTop =
+    normalizeCompact(top.symbol) === queryNorm ||
+    normalizeCompact(top.name) === queryNorm;
 
   if (!second) return [top];
-
-  const queryNorm = normalizeText(query);
-  const exactTop =
-    normalizeText(top.symbol) === queryNorm ||
-    normalizeText(top.name) === queryNorm;
-
   if (exactTop) return [top];
+  if (top._score - second._score >= 260) return [top];
 
-  if (top._score - second._score >= 180) {
-    return [top];
-  }
-
-  return sorted.slice(0, 4);
+  return sorted.slice(0, 5);
 }
 
 async function fetchQuote(symbol) {
   const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${ALPHA_API_KEY}`;
-
   const response = await fetch(url);
   const data = await response.json();
 
@@ -173,8 +244,12 @@ async function fetchQuote(symbol) {
   }
 
   const quote = data["Global Quote"];
-
   if (!quote || !quote["01. symbol"]) {
+    return null;
+  }
+
+  const price = Number(quote["05. price"]);
+  if (!Number.isFinite(price) || price <= 0) {
     return null;
   }
 
@@ -289,12 +364,14 @@ function renderResults(items) {
   resultsBox.innerHTML = "";
 
   if (!items.length) {
-    resultsBox.innerHTML = "<p>Aucun résultat.</p>";
+    resultsBox.innerHTML = "<p>Aucun résultat pertinent.</p>";
     return;
   }
 
   items.forEach((item) => {
-    const alreadyAdded = watchlist.some((w) => normalizeText(w.symbol) === normalizeText(item.symbol));
+    const alreadyAdded = watchlist.some(
+      (w) => normalizeText(w.symbol) === normalizeText(item.symbol)
+    );
 
     const row = document.createElement("div");
     row.className = "card";
@@ -326,11 +403,13 @@ function renderResults(items) {
       const item = items.find((asset) => asset.symbol === button.dataset.symbol);
       if (!item) return;
 
-      const exists = watchlist.some((w) => normalizeText(w.symbol) === normalizeText(item.symbol));
+      const exists = watchlist.some(
+        (w) => normalizeText(w.symbol) === normalizeText(item.symbol)
+      );
       if (exists) return;
 
       button.disabled = true;
-      button.textContent = "Ajout...";
+      button.textContent = "Vérification...";
 
       let quote = null;
 
@@ -340,16 +419,21 @@ function renderResults(items) {
         quote = null;
       }
 
+      if (!quote) {
+        button.textContent = "Pas de cotation";
+        return;
+      }
+
       watchlist.push({
         symbol: item.symbol,
         name: item.name,
         type: item.type,
         region: item.region || item.exchangeShortName || "",
         currency: item.currency || "",
-        price: quote?.price || "",
-        changePercent: quote?.changePercent || "",
-        change: quote?.change || "",
-        previousClose: quote?.previousClose || "",
+        price: quote.price || "",
+        changePercent: quote.changePercent || "",
+        change: quote.change || "",
+        previousClose: quote.previousClose || "",
       });
 
       saveWatchlist();
