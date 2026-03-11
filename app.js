@@ -22,7 +22,8 @@ const SMART_ALIASES = [
     candidates: [
       {
         symbol: "EGLN",
-        apiSymbols: ["EGLN.LON", "EGLN"],
+        apiSymbol: "EGLN",
+        yahooSymbol: "EGLN.L",
         name: "iShares Physical Gold ETC",
         type: "ETC",
         region: "United Kingdom",
@@ -30,7 +31,8 @@ const SMART_ALIASES = [
       },
       {
         symbol: "SGLN",
-        apiSymbols: ["SGLN.LON", "SGLN"],
+        apiSymbol: "SGLN",
+        yahooSymbol: "SGLN.L",
         name: "iShares Physical Gold ETC",
         type: "ETC",
         region: "United Kingdom",
@@ -38,7 +40,8 @@ const SMART_ALIASES = [
       },
       {
         symbol: "IGLN",
-        apiSymbols: ["IGLN.LON", "IGLN"],
+        apiSymbol: "IGLN",
+        yahooSymbol: "IGLN.L",
         name: "iShares Physical Gold ETC",
         type: "ETC",
         region: "United Kingdom",
@@ -117,7 +120,10 @@ function chooseResults(items, query) {
     const name = normalizeText(item.name);
     const region = normalizeText(item.region);
     const currency = normalizeText(item.currency);
-    const etfLike = normalizeText(item.type).includes("etf") || normalizeText(item.type).includes("etc");
+    const etfLike =
+      normalizeText(item.type).includes("etf") ||
+      normalizeText(item.type).includes("etc") ||
+      normalizeText(item.type).includes("etp");
 
     if (symbol === q) score += 1000;
     if (name === q) score += 900;
@@ -126,7 +132,13 @@ function chooseResults(items, query) {
     if (symbol.includes(q)) score += 120;
     if (name.includes(q)) score += 100;
     if (currency === "eur") score += 70;
-    if (region.includes("france") || region.includes("germany") || region.includes("netherlands") || region.includes("europe") || region.includes("united kingdom")) score += 50;
+    if (
+      region.includes("france") ||
+      region.includes("germany") ||
+      region.includes("netherlands") ||
+      region.includes("europe") ||
+      region.includes("united kingdom")
+    ) score += 50;
     if (etfLike) score += 40;
 
     return { ...item, _score: score };
@@ -165,7 +177,7 @@ function findLocalAliasMatches(query) {
   return [];
 }
 
-async function fetchQuoteRaw(symbol) {
+async function fetchQuoteAlpha(symbol) {
   const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${API_KEY}`;
   const response = await fetch(url);
   const data = await response.json();
@@ -175,11 +187,12 @@ async function fetchQuoteRaw(symbol) {
   }
 
   const quote = data["Global Quote"];
-  if (!quote || !quote["01. symbol"]) {
+  if (!quote || !quote["01. symbol"] || !quote["05. price"]) {
     return null;
   }
 
   return {
+    source: "alpha",
     symbol: quote["01. symbol"] || symbol,
     price: quote["05. price"] || "",
     changePercent: (quote["10. change percent"] || "").replace("%", "").trim(),
@@ -188,20 +201,75 @@ async function fetchQuoteRaw(symbol) {
   };
 }
 
-async function fetchQuoteWithFallback(symbols) {
-  const list = Array.isArray(symbols) ? symbols : [symbols];
+async function fetchQuoteYahoo(symbol) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`;
+  const response = await fetch(url);
+  const data = await response.json();
 
-  for (const symbol of list) {
+  const result = data?.chart?.result?.[0];
+  const meta = result?.meta;
+
+  if (!meta || meta.regularMarketPrice == null) {
+    return null;
+  }
+
+  const regularMarketPrice = meta.regularMarketPrice;
+  const previousClose = meta.chartPreviousClose ?? meta.previousClose ?? null;
+
+  let change = "";
+  let changePercent = "";
+
+  if (regularMarketPrice != null && previousClose != null && previousClose !== 0) {
+    const delta = regularMarketPrice - previousClose;
+    change = String(delta);
+    changePercent = String((delta / previousClose) * 100);
+  }
+
+  return {
+    source: "yahoo",
+    symbol,
+    price: String(regularMarketPrice ?? ""),
+    changePercent,
+    change,
+    previousClose: previousClose != null ? String(previousClose) : ""
+  };
+}
+
+async function fetchQuoteSmart(item) {
+  const alphaCandidates = [];
+  const yahooCandidates = [];
+
+  if (item.apiSymbol) alphaCandidates.push(item.apiSymbol);
+  if (item.symbol && !alphaCandidates.includes(item.symbol)) alphaCandidates.push(item.symbol);
+
+  if (item.yahooSymbol) yahooCandidates.push(item.yahooSymbol);
+
+  for (const candidate of alphaCandidates) {
     try {
-      const quote = await fetchQuoteRaw(symbol);
-      if (quote && quote.price) {
+      const quote = await fetchQuoteAlpha(candidate);
+      if (quote) {
         return {
           ...quote,
-          resolvedApiSymbol: symbol
+          resolvedApiSymbol: candidate,
+          resolvedYahooSymbol: item.yahooSymbol || ""
         };
       }
     } catch (error) {
       if (error.message === "API_LIMIT") throw error;
+    }
+  }
+
+  for (const candidate of yahooCandidates) {
+    try {
+      const quote = await fetchQuoteYahoo(candidate);
+      if (quote) {
+        return {
+          ...quote,
+          resolvedApiSymbol: item.apiSymbol || item.symbol,
+          resolvedYahooSymbol: candidate
+        };
+      }
+    } catch (error) {
     }
   }
 
@@ -220,18 +288,12 @@ async function refreshWatchlist() {
 
   for (const item of watchlist) {
     try {
-      const candidateSymbols =
-        item.apiSymbols && item.apiSymbols.length
-          ? item.apiSymbols
-          : item.apiSymbol
-            ? [item.apiSymbol]
-            : [item.symbol];
-
-      const quote = await fetchQuoteWithFallback(candidateSymbols);
+      const quote = await fetchQuoteSmart(item);
 
       refreshed.push({
         ...item,
         apiSymbol: quote?.resolvedApiSymbol || item.apiSymbol || item.symbol,
+        yahooSymbol: quote?.resolvedYahooSymbol || item.yahooSymbol || "",
         price: quote?.price || item.price || "",
         changePercent: quote?.changePercent || item.changePercent || "",
         change: quote?.change || item.change || "",
@@ -359,7 +421,7 @@ function renderResults(items) {
       let quote = null;
 
       try {
-        quote = await fetchQuoteWithFallback(item.apiSymbols || item.apiSymbol || item.symbol);
+        quote = await fetchQuoteSmart(item);
       } catch (error) {
         quote = null;
       }
@@ -367,7 +429,7 @@ function renderResults(items) {
       watchlist.push({
         symbol: item.symbol,
         apiSymbol: quote?.resolvedApiSymbol || item.apiSymbol || item.symbol,
-        apiSymbols: item.apiSymbols || (item.apiSymbol ? [item.apiSymbol] : [item.symbol]),
+        yahooSymbol: quote?.resolvedYahooSymbol || item.yahooSymbol || "",
         name: item.name,
         type: item.type,
         region: item.region,
@@ -416,7 +478,7 @@ async function searchAssets() {
     let matches = (data.bestMatches || []).map((item) => ({
       symbol: item["1. symbol"] || "",
       apiSymbol: item["1. symbol"] || "",
-      apiSymbols: [item["1. symbol"] || ""],
+      yahooSymbol: "",
       name: item["2. name"] || "",
       type: item["3. type"] || "",
       region: item["4. region"] || "",
