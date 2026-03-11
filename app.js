@@ -1,6 +1,5 @@
 const API_KEY = "355DCVOBSX0C2X75";
 
-
 const searchInput = document.getElementById("searchInput");
 const searchButton = document.getElementById("searchButton");
 const resultsBox = document.getElementById("results");
@@ -406,11 +405,6 @@ searchButton.addEventListener("click", searchAssets);
 
 searchInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
-    searchAssets();
-  }
-});
-
-renderWatchlist();
     searchAssets();
   }
 });
