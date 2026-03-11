@@ -1,4 +1,5 @@
-const API_KEY = "355DCVOBSX0C2X75";
+const ALPHA_API_KEY = "355DCVOBSX0C2X75";
+const FMP_API_KEY = "FWbT2hS8KD6DOJT4pUOUy4Ivjs1zvxmM";
 
 const searchInput = document.getElementById("searchInput");
 const searchButton = document.getElementById("searchButton");
@@ -47,7 +48,7 @@ function normalizeText(value) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^a-z0-9.]+/g, " ")
     .trim();
 }
 
@@ -56,6 +57,7 @@ function isLikelyETF(item) {
   const name = normalizeText(item.name);
   return (
     type.includes("etf") ||
+    type.includes("fund") ||
     name.includes("etf") ||
     name.includes("ucits") ||
     name.includes("ishares") ||
@@ -67,22 +69,24 @@ function isLikelyETF(item) {
   );
 }
 
-function isEuropeanRegion(region) {
+function isEuropeanRegion(region, exchange) {
   const r = normalizeText(region);
+  const e = normalizeText(exchange);
   return (
     r.includes("europe") ||
-    r.includes("euronext") ||
     r.includes("france") ||
     r.includes("germany") ||
-    r.includes("xetra") ||
-    r.includes("amsterdam") ||
-    r.includes("brussels") ||
-    r.includes("milan") ||
-    r.includes("madrid") ||
-    r.includes("switzerland") ||
-    r.includes("italy") ||
     r.includes("netherlands") ||
-    r.includes("belgium")
+    r.includes("belgium") ||
+    r.includes("italy") ||
+    r.includes("spain") ||
+    r.includes("switzerland") ||
+    r.includes("united kingdom") ||
+    e.includes("paris") ||
+    e.includes("euronext") ||
+    e.includes("xetra") ||
+    e.includes("frankfurt") ||
+    e.includes("amsterdam")
   );
 }
 
@@ -91,29 +95,28 @@ function scoreResult(item, query) {
   const symbol = normalizeText(item.symbol);
   const name = normalizeText(item.name);
   const region = normalizeText(item.region);
+  const exchange = normalizeText(item.exchangeShortName || item.exchange || "");
   const currency = normalizeText(item.currency);
   const etf = isLikelyETF(item);
-  const europe = isEuropeanRegion(region);
+  const europe = isEuropeanRegion(region, exchange);
 
   let score = 0;
 
   if (symbol === q) score += 1000;
   if (name === q) score += 900;
 
-  if (symbol.startsWith(q)) score += 220;
+  if (symbol.startsWith(q)) score += 240;
   if (name.startsWith(q)) score += 180;
 
-  if (symbol.includes(q)) score += 120;
+  if (symbol.includes(q)) score += 130;
   if (name.includes(q)) score += 100;
 
   if (europe) score += 80;
   if (currency === "eur") score += 60;
 
   if (etf && europe && currency === "eur") score += 140;
-  else if (etf && europe) score += 110;
+  else if (etf && europe) score += 100;
   else if (etf) score += 30;
-
-  if (region.includes("united states") || region.includes("us")) score -= 10;
 
   return score;
 }
@@ -123,11 +126,7 @@ function dedupeResults(items) {
   const deduped = [];
 
   for (const item of items) {
-    const symbol = normalizeText(item.symbol);
-    const name = normalizeText(item.name);
-    const region = normalizeText(item.region);
-    const key = `${symbol}|${name}|${region}`;
-
+    const key = `${normalizeText(item.symbol)}|${normalizeText(item.name)}|${normalizeText(item.exchangeShortName || item.exchange || "")}`;
     if (!seen.has(key)) {
       seen.add(key);
       deduped.push(item);
@@ -164,10 +163,14 @@ function chooseResults(items, query) {
 }
 
 async function fetchQuote(symbol) {
-  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${API_KEY}`;
+  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${ALPHA_API_KEY}`;
 
   const response = await fetch(url);
   const data = await response.json();
+
+  if (data.Note || data.Information || data["Error Message"]) {
+    return null;
+  }
 
   const quote = data["Global Quote"];
 
@@ -306,7 +309,7 @@ function renderResults(items) {
         </div>
 
         <div class="meta">
-          <div class="meta-line">${escapeHtml(item.type || "-")} • ${escapeHtml(item.region || "-")} • ${escapeHtml(item.currency || "-")}</div>
+          <div class="meta-line">${escapeHtml(item.type || "-")} • ${escapeHtml(item.region || item.exchangeShortName || "-")} • ${escapeHtml(item.currency || "-")}</div>
         </div>
       </div>
 
@@ -341,8 +344,8 @@ function renderResults(items) {
         symbol: item.symbol,
         name: item.name,
         type: item.type,
-        region: item.region,
-        currency: item.currency,
+        region: item.region || item.exchangeShortName || "",
+        currency: item.currency || "",
         price: quote?.price || "",
         changePercent: quote?.changePercent || "",
         change: quote?.change || "",
@@ -369,26 +372,22 @@ async function searchAssets() {
   resultsBox.innerHTML = "<p>Recherche en cours...</p>";
 
   try {
-    const url = `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${API_KEY}`;
-
+    const url = `https://financialmodelingprep.com/stable/search-name?query=${encodeURIComponent(query)}&apikey=${FMP_API_KEY}`;
     const response = await fetch(url);
     const data = await response.json();
 
-    if (data.Note) {
-      resultsBox.innerHTML = "<p>Limite API atteinte pour le moment. Réessaie un peu plus tard.</p>";
+    if (!Array.isArray(data)) {
+      resultsBox.innerHTML = "<p>Erreur de recherche.</p>";
       return;
     }
 
-    let matches = (data.bestMatches || []).map((item) => ({
-      symbol: item["1. symbol"] || "",
-      name: item["2. name"] || "",
-      type: item["3. type"] || "",
-      region: item["4. region"] || "",
-      marketOpen: item["5. marketOpen"] || "",
-      marketClose: item["6. marketClose"] || "",
-      timezone: item["7. timezone"] || "",
-      currency: item["8. currency"] || "",
-      matchScore: item["9. matchScore"] || "",
+    let matches = data.map((item) => ({
+      symbol: item.symbol || "",
+      name: item.name || "",
+      type: item.type || item.instrumentType || "",
+      region: item.exchangeShortName || item.exchange || "",
+      exchangeShortName: item.exchangeShortName || "",
+      currency: item.currency || "",
     }));
 
     matches = matches.filter((item) => item.symbol && item.name);
