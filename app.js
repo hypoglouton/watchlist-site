@@ -1,55 +1,12 @@
 const API_KEY = "355DCVOBSX0C2X75";
 
+
 const searchInput = document.getElementById("searchInput");
 const searchButton = document.getElementById("searchButton");
 const resultsBox = document.getElementById("results");
 const watchlistBox = document.getElementById("watchlist");
 
 let watchlist = JSON.parse(localStorage.getItem("watchlist")) || [];
-
-const SMART_ALIASES = [
-  {
-    aliases: [
-      "ishares physical gold",
-      "ishares physical gold etc",
-      "ishares gold",
-      "physical gold",
-      "gold ishares",
-      "sgln",
-      "igln",
-      "egln"
-    ],
-    candidates: [
-      {
-        symbol: "EGLN",
-        apiSymbol: "EGLN",
-        yahooSymbol: "EGLN.L",
-        name: "iShares Physical Gold ETC",
-        type: "ETC",
-        region: "United Kingdom",
-        currency: "EUR"
-      },
-      {
-        symbol: "SGLN",
-        apiSymbol: "SGLN",
-        yahooSymbol: "SGLN.L",
-        name: "iShares Physical Gold ETC",
-        type: "ETC",
-        region: "United Kingdom",
-        currency: "USD"
-      },
-      {
-        symbol: "IGLN",
-        apiSymbol: "IGLN",
-        yahooSymbol: "IGLN.L",
-        name: "iShares Physical Gold ETC",
-        type: "ETC",
-        region: "United Kingdom",
-        currency: "USD"
-      }
-    ]
-  }
-];
 
 function saveWatchlist() {
   localStorage.setItem("watchlist", JSON.stringify(watchlist));
@@ -95,12 +52,83 @@ function normalizeText(value) {
     .trim();
 }
 
+function isLikelyETF(item) {
+  const type = normalizeText(item.type);
+  const name = normalizeText(item.name);
+  return (
+    type.includes("etf") ||
+    name.includes("etf") ||
+    name.includes("ucits") ||
+    name.includes("ishares") ||
+    name.includes("amundi") ||
+    name.includes("spdr") ||
+    name.includes("xtrackers") ||
+    name.includes("lyxor") ||
+    name.includes("vanguard")
+  );
+}
+
+function isEuropeanRegion(region) {
+  const r = normalizeText(region);
+  return (
+    r.includes("europe") ||
+    r.includes("euronext") ||
+    r.includes("france") ||
+    r.includes("germany") ||
+    r.includes("xetra") ||
+    r.includes("amsterdam") ||
+    r.includes("brussels") ||
+    r.includes("milan") ||
+    r.includes("madrid") ||
+    r.includes("switzerland") ||
+    r.includes("italy") ||
+    r.includes("netherlands") ||
+    r.includes("belgium")
+  );
+}
+
+function scoreResult(item, query) {
+  const q = normalizeText(query);
+  const symbol = normalizeText(item.symbol);
+  const name = normalizeText(item.name);
+  const region = normalizeText(item.region);
+  const currency = normalizeText(item.currency);
+  const etf = isLikelyETF(item);
+  const europe = isEuropeanRegion(region);
+
+  let score = 0;
+
+  if (symbol === q) score += 1000;
+  if (name === q) score += 900;
+
+  if (symbol.startsWith(q)) score += 220;
+  if (name.startsWith(q)) score += 180;
+
+  if (symbol.includes(q)) score += 120;
+  if (name.includes(q)) score += 100;
+
+  if (europe) score += 80;
+  if (currency === "eur") score += 60;
+
+  if (etf && europe && currency === "eur") score += 140;
+  else if (etf && europe) score += 110;
+  else if (etf) score += 30;
+
+  if (region.includes("united states") || region.includes("us")) score -= 10;
+
+  return score;
+}
+
 function dedupeResults(items) {
   const seen = new Set();
   const deduped = [];
 
   for (const item of items) {
-    const key = `${normalizeText(item.symbol)}|${normalizeText(item.name)}|${normalizeText(item.region)}|${normalizeText(item.currency)}`;
+    const symbol = normalizeText(item.symbol);
+    const name = normalizeText(item.name);
+    const region = normalizeText(item.region);
+    const key = `${symbol}|${name}|${region}`;
+
     if (!seen.has(key)) {
       seen.add(key);
       deduped.push(item);
@@ -112,168 +140,49 @@ function dedupeResults(items) {
 
 function chooseResults(items, query) {
   if (!items.length) return [];
-  const q = normalizeText(query);
 
-  const scored = [...items].map((item) => {
-    let score = 0;
-    const symbol = normalizeText(item.symbol);
-    const name = normalizeText(item.name);
-    const region = normalizeText(item.region);
-    const currency = normalizeText(item.currency);
-    const etfLike =
-      normalizeText(item.type).includes("etf") ||
-      normalizeText(item.type).includes("etc") ||
-      normalizeText(item.type).includes("etp");
+  const sorted = [...items]
+    .map((item) => ({ ...item, _score: scoreResult(item, query) }))
+    .sort((a, b) => b._score - a._score);
 
-    if (symbol === q) score += 1000;
-    if (name === q) score += 900;
-    if (symbol.startsWith(q)) score += 200;
-    if (name.startsWith(q)) score += 160;
-    if (symbol.includes(q)) score += 120;
-    if (name.includes(q)) score += 100;
-    if (currency === "eur") score += 70;
-    if (
-      region.includes("france") ||
-      region.includes("germany") ||
-      region.includes("netherlands") ||
-      region.includes("europe") ||
-      region.includes("united kingdom")
-    ) score += 50;
-    if (etfLike) score += 40;
+  const top = sorted[0];
+  const second = sorted[1];
 
-    return { ...item, _score: score };
-  }).sort((a, b) => b._score - a._score);
+  if (!second) return [top];
 
-  if (scored.length === 1) return [scored[0]];
+  const queryNorm = normalizeText(query);
+  const exactTop =
+    normalizeText(top.symbol) === queryNorm ||
+    normalizeText(top.name) === queryNorm;
 
-  const top = scored[0];
-  const second = scored[1];
-
-  if (normalizeText(top.symbol) === q || normalizeText(top.name) === q) {
-    return [top];
-  }
+  if (exactTop) return [top];
 
   if (top._score - second._score >= 180) {
     return [top];
   }
 
-  return scored.slice(0, 4);
+  return sorted.slice(0, 4);
 }
 
-function findLocalAliasMatches(query) {
-  const q = normalizeText(query);
-
-  for (const entry of SMART_ALIASES) {
-    const hit = entry.aliases.some((alias) => {
-      const a = normalizeText(alias);
-      return q === a || q.includes(a) || a.includes(q);
-    });
-
-    if (hit) {
-      return entry.candidates;
-    }
-  }
-
-  return [];
-}
-
-async function fetchQuoteAlpha(symbol) {
+async function fetchQuote(symbol) {
   const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${API_KEY}`;
+
   const response = await fetch(url);
   const data = await response.json();
 
-  if (data.Note) {
-    throw new Error("API_LIMIT");
-  }
-
   const quote = data["Global Quote"];
-  if (!quote || !quote["01. symbol"] || !quote["05. price"]) {
+
+  if (!quote || !quote["01. symbol"]) {
     return null;
   }
 
   return {
-    source: "alpha",
     symbol: quote["01. symbol"] || symbol,
     price: quote["05. price"] || "",
     changePercent: (quote["10. change percent"] || "").replace("%", "").trim(),
     change: quote["09. change"] || "",
-    previousClose: quote["08. previous close"] || ""
+    previousClose: quote["08. previous close"] || "",
   };
-}
-
-async function fetchQuoteYahoo(symbol) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`;
-  const response = await fetch(url);
-  const data = await response.json();
-
-  const result = data?.chart?.result?.[0];
-  const meta = result?.meta;
-
-  if (!meta || meta.regularMarketPrice == null) {
-    return null;
-  }
-
-  const regularMarketPrice = meta.regularMarketPrice;
-  const previousClose = meta.chartPreviousClose ?? meta.previousClose ?? null;
-
-  let change = "";
-  let changePercent = "";
-
-  if (regularMarketPrice != null && previousClose != null && previousClose !== 0) {
-    const delta = regularMarketPrice - previousClose;
-    change = String(delta);
-    changePercent = String((delta / previousClose) * 100);
-  }
-
-  return {
-    source: "yahoo",
-    symbol,
-    price: String(regularMarketPrice ?? ""),
-    changePercent,
-    change,
-    previousClose: previousClose != null ? String(previousClose) : ""
-  };
-}
-
-async function fetchQuoteSmart(item) {
-  const alphaCandidates = [];
-  const yahooCandidates = [];
-
-  if (item.apiSymbol) alphaCandidates.push(item.apiSymbol);
-  if (item.symbol && !alphaCandidates.includes(item.symbol)) alphaCandidates.push(item.symbol);
-
-  if (item.yahooSymbol) yahooCandidates.push(item.yahooSymbol);
-
-  for (const candidate of alphaCandidates) {
-    try {
-      const quote = await fetchQuoteAlpha(candidate);
-      if (quote) {
-        return {
-          ...quote,
-          resolvedApiSymbol: candidate,
-          resolvedYahooSymbol: item.yahooSymbol || ""
-        };
-      }
-    } catch (error) {
-      if (error.message === "API_LIMIT") throw error;
-    }
-  }
-
-  for (const candidate of yahooCandidates) {
-    try {
-      const quote = await fetchQuoteYahoo(candidate);
-      if (quote) {
-        return {
-          ...quote,
-          resolvedApiSymbol: item.apiSymbol || item.symbol,
-          resolvedYahooSymbol: candidate
-        };
-      }
-    } catch (error) {
-    }
-  }
-
-  return null;
 }
 
 async function refreshWatchlist() {
@@ -288,16 +197,19 @@ async function refreshWatchlist() {
 
   for (const item of watchlist) {
     try {
-      const quote = await fetchQuoteSmart(item);
+      if (!item.symbol) {
+        refreshed.push(item);
+        continue;
+      }
+
+      const quote = await fetchQuote(item.symbol);
 
       refreshed.push({
         ...item,
-        apiSymbol: quote?.resolvedApiSymbol || item.apiSymbol || item.symbol,
-        yahooSymbol: quote?.resolvedYahooSymbol || item.yahooSymbol || "",
         price: quote?.price || item.price || "",
         changePercent: quote?.changePercent || item.changePercent || "",
         change: quote?.change || item.change || "",
-        previousClose: quote?.previousClose || item.previousClose || ""
+        previousClose: quote?.previousClose || item.previousClose || "",
       });
     } catch (error) {
       refreshed.push(item);
@@ -421,15 +333,13 @@ function renderResults(items) {
       let quote = null;
 
       try {
-        quote = await fetchQuoteSmart(item);
+        quote = await fetchQuote(item.symbol);
       } catch (error) {
         quote = null;
       }
 
       watchlist.push({
         symbol: item.symbol,
-        apiSymbol: quote?.resolvedApiSymbol || item.apiSymbol || item.symbol,
-        yahooSymbol: quote?.resolvedYahooSymbol || item.yahooSymbol || "",
         name: item.name,
         type: item.type,
         region: item.region,
@@ -437,7 +347,7 @@ function renderResults(items) {
         price: quote?.price || "",
         changePercent: quote?.changePercent || "",
         change: quote?.change || "",
-        previousClose: quote?.previousClose || ""
+        previousClose: quote?.previousClose || "",
       });
 
       saveWatchlist();
@@ -459,14 +369,9 @@ async function searchAssets() {
 
   resultsBox.innerHTML = "<p>Recherche en cours...</p>";
 
-  const localMatches = findLocalAliasMatches(query);
-  if (localMatches.length > 0) {
-    renderResults(chooseResults(dedupeResults(localMatches), query));
-    return;
-  }
-
   try {
     const url = `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${API_KEY}`;
+
     const response = await fetch(url);
     const data = await response.json();
 
@@ -477,12 +382,14 @@ async function searchAssets() {
 
     let matches = (data.bestMatches || []).map((item) => ({
       symbol: item["1. symbol"] || "",
-      apiSymbol: item["1. symbol"] || "",
-      yahooSymbol: "",
       name: item["2. name"] || "",
       type: item["3. type"] || "",
       region: item["4. region"] || "",
-      currency: item["8. currency"] || ""
+      marketOpen: item["5. marketOpen"] || "",
+      marketClose: item["6. marketClose"] || "",
+      timezone: item["7. timezone"] || "",
+      currency: item["8. currency"] || "",
+      matchScore: item["9. matchScore"] || "",
     }));
 
     matches = matches.filter((item) => item.symbol && item.name);
@@ -496,8 +403,14 @@ async function searchAssets() {
 }
 
 searchButton.addEventListener("click", searchAssets);
+
 searchInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
+    searchAssets();
+  }
+});
+
+renderWatchlist();
     searchAssets();
   }
 });
