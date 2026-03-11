@@ -24,7 +24,7 @@
       --radius-xl: 24px;
       --radius-lg: 18px;
       --radius-md: 14px;
-      --max-width: 1400px;
+      --max-width: 1440px;
     }
 
     * { box-sizing: border-box; }
@@ -43,21 +43,29 @@
         linear-gradient(180deg, #050912 0%, #08101b 48%, #050912 100%);
     }
 
-    .page-shell { max-width: var(--max-width); margin: 0 auto; }
+    .page-shell {
+      max-width: var(--max-width);
+      margin: 0 auto;
+    }
 
-    .hero {
+    .hero,
+    .panel {
       position: relative;
       overflow: hidden;
       border: 1px solid var(--border);
       border-radius: 30px;
       background: linear-gradient(135deg, rgba(17, 25, 40, 0.94), rgba(8, 13, 24, 0.96));
       box-shadow: var(--shadow);
-      padding: 28px;
-      margin-bottom: 22px;
       backdrop-filter: blur(10px);
     }
 
-    .hero::before {
+    .hero {
+      padding: 28px;
+      margin-bottom: 22px;
+    }
+
+    .hero::before,
+    .panel::before {
       content: "";
       position: absolute;
       inset: 0;
@@ -67,9 +75,13 @@
         linear-gradient(300deg, rgba(34,197,94,0.06), transparent 26%);
     }
 
-    .hero-top {
+    .hero-top,
+    .panel > * {
       position: relative;
       z-index: 1;
+    }
+
+    .hero-top {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
@@ -103,8 +115,6 @@
     }
 
     .hero-side {
-      position: relative;
-      z-index: 1;
       min-width: 220px;
       display: grid;
       gap: 10px;
@@ -132,8 +142,6 @@
     }
 
     .index-strip {
-      position: relative;
-      z-index: 1;
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 12px;
@@ -145,7 +153,7 @@
       border: 1px solid rgba(148, 163, 184, 0.12);
       background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
-      min-height: 120px;
+      min-height: 122px;
     }
 
     .index-name {
@@ -176,26 +184,12 @@
       line-height: 1.4;
     }
 
-    .index-loading .index-value,
-    .index-loading .index-change,
-    .index-loading .index-meta {
-      color: #7e8da8;
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 22px;
-      align-items: start;
-    }
+    .positive { color: var(--green); }
+    .negative { color: var(--red); }
+    .neutral { color: #c7d2e3; }
 
     .panel {
-      border: 1px solid var(--border);
-      border-radius: var(--radius-xl);
-      background: linear-gradient(180deg, rgba(14, 20, 34, 0.94), rgba(8, 13, 24, 0.96));
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(10px);
-      overflow: hidden;
+      margin-bottom: 22px;
     }
 
     .panel-header {
@@ -232,7 +226,23 @@
       line-height: 1.45;
     }
 
-    .panel-body { padding: 20px 22px 22px 22px; }
+    .panel-body {
+      padding: 20px 22px 22px 22px;
+    }
+
+    .section-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.16);
+      color: #f7c15d;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
 
     .search-row {
       display: grid;
@@ -311,24 +321,20 @@
       font-size: 12px;
     }
 
-    .results-wrap, #watchlist {
-      display: grid;
-      gap: 14px;
-    }
+    .results-wrap { display: grid; gap: 14px; }
 
     .section-head {
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 12px;
-      flex-wrap: wrap;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
 
     .section-head-title {
       font-size: 14px;
-      color: #d9e5f7;
-      letter-spacing: 0.01em;
+      color: #dce7fb;
+      letter-spacing: -0.02em;
     }
 
     .section-count {
@@ -337,7 +343,7 @@
       padding: 6px 10px;
       border-radius: 999px;
       background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(148, 163, 184, 0.10);
+      border: 1px solid rgba(148, 163, 184, 0.1);
     }
 
     .empty-state {
@@ -381,24 +387,9 @@
     }
 
     .left { min-width: 0; flex: 1; }
-
-    .top-line {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      flex-wrap: wrap;
-    }
-
+    .top-line { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; flex-wrap: wrap; }
     .identity { min-width: 240px; flex: 1; }
-
-    .title {
-      font-size: 20px;
-      line-height: 1.2;
-      color: #f7fbff;
-      letter-spacing: -0.02em;
-      margin-bottom: 6px;
-    }
+    .title { font-size: 20px; line-height: 1.2; color: #f7fbff; letter-spacing: -0.02em; margin-bottom: 6px; }
 
     .ticker {
       display: inline-flex;
@@ -412,32 +403,11 @@
       border: 1px solid rgba(79,140,255,0.14);
     }
 
-    .price-box {
-      text-align: right;
-      min-width: 190px;
-      padding-left: 10px;
-    }
-
-    .price {
-      font-size: clamp(30px, 3vw, 40px);
-      line-height: 1;
-      letter-spacing: -0.04em;
-      margin-bottom: 8px;
-      color: #ffffff;
-    }
-
+    .price-box { text-align: right; min-width: 190px; padding-left: 10px; }
+    .price { font-size: clamp(30px, 3vw, 40px); line-height: 1; letter-spacing: -0.04em; margin-bottom: 8px; color: #ffffff; }
     .change { font-size: 16px; font-weight: 600; }
-    .positive { color: var(--green); }
-    .negative { color: var(--red); }
-    .neutral { color: #c7d2e3; }
 
-    .meta {
-      margin-top: 14px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
+    .meta { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
     .meta-line {
       margin: 0;
       display: inline-flex;
@@ -451,174 +421,107 @@
       line-height: 1.3;
     }
 
-    .actions, .toolbar-actions {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
+    .actions { display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .add-btn { background: linear-gradient(180deg, #16a34a, #15803d); box-shadow: 0 10px 24px rgba(21, 128, 61, 0.22); }
+    .remove-btn { background: linear-gradient(180deg, #ef4444, #dc2626); box-shadow: 0 10px 24px rgba(220, 38, 38, 0.22); }
 
-    .add-btn {
-      background: linear-gradient(180deg, #16a34a, #15803d);
-      box-shadow: 0 10px 24px rgba(21, 128, 61, 0.22);
-    }
-
-    .remove-btn {
-      background: linear-gradient(180deg, #ef4444, #dc2626);
-      box-shadow: 0 10px 24px rgba(220, 38, 38, 0.22);
-      padding: 10px 14px;
-      border-radius: 12px;
-      font-size: 13px;
-    }
-
-    .toolbar {
+    .table-toolbar {
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 12px;
       flex-wrap: wrap;
-      padding: 12px 14px;
-      border: 1px solid rgba(148,163,184,0.10);
-      border-radius: 18px;
-      background: rgba(255,255,255,0.03);
+      margin-bottom: 14px;
     }
 
-    .toolbar-copy { display: grid; gap: 4px; }
-    .toolbar-title { font-size: 14px; color: #dce8fa; }
-    .toolbar-subtitle { font-size: 12px; color: var(--muted); }
-
-    .section-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 7px 10px;
-      border-radius: 999px;
-      background: rgba(245, 158, 11, 0.08);
-      border: 1px solid rgba(245, 158, 11, 0.16);
-      color: #f7c15d;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-
-    .watchlist-shell {
-      display: grid;
-      gap: 14px;
-    }
-
-    .watchlist-table-wrap {
+    .table-wrap {
       border: 1px solid rgba(148, 163, 184, 0.12);
       border-radius: 18px;
       overflow: auto;
-      background: linear-gradient(180deg, rgba(7, 11, 20, 0.96), rgba(5, 9, 16, 0.98));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+      background: linear-gradient(180deg, rgba(8, 13, 24, 0.95), rgba(5, 10, 19, 0.98));
     }
 
-    .watchlist-table {
+    table {
       width: 100%;
-      min-width: 1320px;
       border-collapse: separate;
       border-spacing: 0;
-      font-size: 13px;
+      min-width: 1180px;
     }
 
-    .watchlist-table thead th {
+    thead th {
       position: sticky;
       top: 0;
       z-index: 2;
       padding: 14px 12px;
       text-align: left;
       font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
+      color: #b9c9e4;
       text-transform: uppercase;
-      color: #9fb1cf;
-      background: linear-gradient(180deg, rgba(15, 23, 40, 0.98), rgba(10, 16, 28, 0.98));
-      border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+      letter-spacing: 0.06em;
+      background: linear-gradient(180deg, rgba(16, 25, 42, 0.98), rgba(10, 17, 30, 0.98));
+      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
       white-space: nowrap;
     }
 
-    .watchlist-table tbody td {
+    tbody td {
       padding: 14px 12px;
       border-bottom: 1px solid rgba(148, 163, 184, 0.08);
-      color: #dbe7f8;
-      white-space: nowrap;
-      background: transparent;
-    }
-
-    .watchlist-table tbody tr {
-      transition: background 0.18s ease;
-    }
-
-    .watchlist-table tbody tr:hover td {
-      background: rgba(79, 140, 255, 0.04);
-    }
-
-    .watchlist-name-cell {
-      min-width: 260px;
-      max-width: 360px;
-    }
-
-    .watchlist-name-main {
+      color: #deebff;
       font-size: 14px;
-      color: #f7fbff;
-      margin-bottom: 4px;
-      white-space: normal;
-      line-height: 1.35;
+      white-space: nowrap;
+      vertical-align: middle;
     }
 
-    .watchlist-name-sub {
-      font-size: 11px;
-      color: var(--muted-2);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
+    tbody tr:hover td {
+      background: rgba(79, 140, 255, 0.045);
     }
 
-    .watchlist-ticker {
+    .wl-name {
+      min-width: 260px;
+    }
+
+    .wl-name-main {
+      color: #f5f9ff;
+      font-size: 15px;
+      line-height: 1.25;
+      margin-bottom: 6px;
+    }
+
+    .wl-name-sub {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .cell-price {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .cell-empty {
+      color: rgba(144, 161, 191, 0.5);
+    }
+
+    .num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ticker-chip {
       display: inline-flex;
-      align-items: center;
       padding: 6px 9px;
       border-radius: 999px;
       background: rgba(79,140,255,0.08);
       border: 1px solid rgba(79,140,255,0.14);
-      color: #b4c8e7;
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .watchlist-price {
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      color: #ffffff;
-    }
-
-    .watchlist-subvalue {
-      margin-top: 4px;
-      font-size: 11px;
-      color: var(--muted);
-    }
-
-    .watchlist-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 30px;
-      padding: 6px 10px;
-      border-radius: 10px;
-      border: 1px solid rgba(148, 163, 184, 0.10);
-      background: rgba(255,255,255,0.03);
-      color: #d6e2f3;
+      color: #c8d8f2;
       font-size: 12px;
     }
 
-    .watchlist-empty-cell {
-      color: #5f708d;
+    .small-btn {
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 13px;
     }
-
-    .align-right { text-align: right; }
-    .align-center { text-align: center; }
 
     .footer-note {
       margin-top: 18px;
@@ -628,33 +531,24 @@
       text-align: center;
     }
 
-    @media (max-width: 1200px) {
-      .index-strip {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-    }
-
-    @media (max-width: 980px) {
-      .hero-side {
-        width: 100%;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
+    @media (max-width: 1180px) {
+      .index-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
     @media (max-width: 760px) {
       body { padding: 16px; }
-      .hero { border-radius: 22px; padding: 20px; }
-      .panel { border-radius: 20px; }
+      .hero, .panel { border-radius: 22px; }
+      .hero { padding: 20px; }
       .panel-header, .panel-body { padding-left: 16px; padding-right: 16px; }
       .search-row { grid-template-columns: 1fr; }
       .card { flex-direction: column; align-items: stretch; }
       .top-line { flex-direction: column; align-items: stretch; gap: 12px; }
       .price-box { min-width: 0; padding-left: 0; text-align: left; }
-      .actions { width: 100%; }
+      .actions, .toolbar-actions { width: 100%; }
       .remove-btn, .add-btn, #searchButton { width: 100%; }
-      .hero-side { grid-template-columns: 1fr; }
+      .hero-side, .index-strip { grid-template-columns: 1fr; }
       .mini-value { font-size: 20px; }
-      .index-strip { grid-template-columns: 1fr; }
+      table { min-width: 980px; }
     }
   </style>
 </head>
@@ -680,111 +574,67 @@
       </div>
 
       <div class="index-strip">
-        <div class="index-card index-loading" data-index-card="cac40">
-          <div class="index-name">CAC 40</div>
-          <div class="index-value">Chargement...</div>
-          <div class="index-change">-</div>
-          <div class="index-meta">Récupération en cours</div>
+        <div class="index-card" data-index-card="cac40"><div class="index-name">CAC 40</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
+        <div class="index-card" data-index-card="sp500"><div class="index-name">S&amp;P 500</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
+        <div class="index-card" data-index-card="eurostoxx50"><div class="index-name">Euro Stoxx 50</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
+        <div class="index-card" data-index-card="nasdaq"><div class="index-name">Nasdaq</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
+        <div class="index-card" data-index-card="brent"><div class="index-name">Pétrole Brent</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
+        <div class="index-card" data-index-card="gold"><div class="index-name">Once d'or</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
+        <div class="index-card" data-index-card="eurusd"><div class="index-name">EUR/USD Spot</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
+        <div class="index-card" data-index-card="silver"><div class="index-name">Silver Continuous Contract</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div class="panel-kicker">Recherche</div>
+        <div class="panel-title-row">
+          <h2 class="panel-title">Trouver un instrument</h2>
+          <span class="section-badge">Nom ou ticker</span>
         </div>
-        <div class="index-card index-loading" data-index-card="sp500">
-          <div class="index-name">S&amp;P 500</div>
-          <div class="index-value">Chargement...</div>
-          <div class="index-change">-</div>
-          <div class="index-meta">Récupération en cours</div>
+        <p class="panel-subtitle">Tape un ticker exact ou un nom de valeur. Le but est d’aller vite vers le résultat le plus pertinent.</p>
+      </div>
+
+      <div class="panel-body">
+        <div class="search-row">
+          <div class="input-wrap">
+            <span class="input-icon">⌕</span>
+            <input id="searchInput" type="text" placeholder="Exemple : Microsoft, MSFT, CW8..." />
+          </div>
+          <button id="searchButton">Rechercher</button>
         </div>
-        <div class="index-card index-loading" data-index-card="eurostoxx50">
-          <div class="index-name">Euro Stoxx 50</div>
-          <div class="index-value">Chargement...</div>
-          <div class="index-change">-</div>
-          <div class="index-meta">Récupération en cours</div>
+
+        <div class="ghost-note">
+          <span class="pill">Actions</span>
+          <span class="pill">ETF</span>
+          <span class="pill">US</span>
+          <span class="pill">Europe</span>
         </div>
-        <div class="index-card index-loading" data-index-card="nasdaq">
-          <div class="index-name">Nasdaq</div>
-          <div class="index-value">Chargement...</div>
-          <div class="index-change">-</div>
-          <div class="index-meta">Récupération en cours</div>
-        </div>
-        <div class="index-card index-loading" data-index-card="brent">
-          <div class="index-name">Pétrole Brent</div>
-          <div class="index-value">Chargement...</div>
-          <div class="index-change">-</div>
-          <div class="index-meta">Récupération en cours</div>
-        </div>
-        <div class="index-card index-loading" data-index-card="gold">
-          <div class="index-name">Once d'or</div>
-          <div class="index-value">Chargement...</div>
-          <div class="index-change">-</div>
-          <div class="index-meta">Récupération en cours</div>
-        </div>
-        <div class="index-card index-loading" data-index-card="eurusd">
-          <div class="index-name">EUR/USD Spot</div>
-          <div class="index-value">Chargement...</div>
-          <div class="index-change">-</div>
-          <div class="index-meta">Récupération en cours</div>
-        </div>
-        <div class="index-card index-loading" data-index-card="silver">
-          <div class="index-name">Silver Continuous Contract</div>
-          <div class="index-value">Chargement...</div>
-          <div class="index-change">-</div>
-          <div class="index-meta">Récupération en cours</div>
+
+        <div id="results" class="results-wrap">
+          <div class="empty-state">Les résultats de recherche apparaîtront ici.</div>
         </div>
       </div>
     </section>
 
-    <main class="layout">
-      <section class="panel">
-        <div class="panel-header">
-          <div class="panel-kicker">Recherche</div>
-          <div class="panel-title-row">
-            <h2 class="panel-title">Trouver un instrument</h2>
-            <span class="section-badge">Nom ou ticker</span>
-          </div>
-          <p class="panel-subtitle">
-            Tape un ticker exact ou un nom de valeur. Le but est d’aller vite vers le résultat le plus pertinent.
-          </p>
+    <section class="panel">
+      <div class="panel-header">
+        <div class="panel-kicker">Suivi</div>
+        <div class="panel-title-row">
+          <h2 class="panel-title">Ma watchlist</h2>
+          <span class="section-badge">Vue tableau</span>
         </div>
+        <p class="panel-subtitle">Affichage en colonnes, proche d’une feuille Excel, avec les cases encore non alimentées laissées volontairement vides.</p>
+      </div>
 
-        <div class="panel-body">
-          <div class="search-row">
-            <div class="input-wrap">
-              <span class="input-icon">⌕</span>
-              <input id="searchInput" type="text" placeholder="Exemple : Microsoft, MSFT, CW8..." />
-            </div>
-            <button id="searchButton">Rechercher</button>
-          </div>
-
-          <div class="ghost-note">
-            <span class="pill">Actions</span>
-            <span class="pill">ETF</span>
-            <span class="pill">US</span>
-            <span class="pill">Europe</span>
-          </div>
-
-          <div id="results" class="results-wrap">
-            <div class="empty-state">Les résultats de recherche apparaîtront ici.</div>
-          </div>
+      <div class="panel-body">
+        <div id="watchlist">
+          <div class="empty-state">Ta watchlist est vide pour le moment.</div>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <section class="panel">
-        <div class="panel-header">
-          <div class="panel-kicker">Suivi</div>
-          <div class="panel-title-row">
-            <h2 class="panel-title">Ma watchlist</h2>
-            <span class="section-badge">Vue tableau</span>
-          </div>
-          <p class="panel-subtitle">
-            Affichage en colonnes, proche d’une feuille Excel, avec les cases encore non alimentées laissées volontairement vides.
-          </p>
-        </div>
-
-        <div class="panel-body">
-          <div id="watchlist"></div>
-        </div>
-      </section>
-    </main>
-
-    <p class="footer-note">Interface sombre, lisible et pensée pour une lecture rapide des instruments financiers.</p>
+    <p class="footer-note">Interface sombre, rapide et pensée pour une lecture immédiate des cotations et de la watchlist.</p>
   </div>
 
   <script src="app.js"></script>
