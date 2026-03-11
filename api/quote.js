@@ -6,12 +6,6 @@ const YAHOO_HEADERS = {
   "Referer": "https://finance.yahoo.com/"
 };
 
-function pickSeries(indicators) {
-  const adjClose = indicators?.adjclose?.[0]?.adjclose;
-  if (Array.isArray(adjClose) && adjClose.some((v) => Number.isFinite(v))) return adjClose;
-  return indicators?.quote?.[0]?.close || [];
-}
-
 function normalizeType(rawType) {
   const value = String(rawType || "").toUpperCase();
   const map = {
@@ -55,6 +49,14 @@ function calcPerf(latestValue, referenceValue) {
   return ((latestValue / referenceValue) - 1) * 100;
 }
 
+function pickChartSeries(indicators) {
+  const adjClose = indicators?.adjclose?.[0]?.adjclose;
+  if (Array.isArray(adjClose) && adjClose.some((v) => Number.isFinite(v))) return adjClose;
+  const close = indicators?.quote?.[0]?.close;
+  if (Array.isArray(close)) return close;
+  return [];
+}
+
 async function fetchJson(url) {
   const response = await fetch(url, { headers: YAHOO_HEADERS });
   const text = await response.text();
@@ -67,11 +69,43 @@ async function fetchJson(url) {
   }
 
   if (!response.ok) {
-    const errorMessage = data?.chart?.error?.description || data?.finance?.error?.description || "yahoo_request_failed";
+    const errorMessage =
+      data?.chart?.error?.description ||
+      data?.finance?.error?.description ||
+      data?.quoteResponse?.error?.description ||
+      "yahoo_request_failed";
     throw new Error(errorMessage);
   }
 
   return data;
+}
+
+async function fetchQuoteSnapshot(symbol) {
+  const quoteUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}&lang=fr-FR&region=FR`;
+  const quoteData = await fetchJson(quoteUrl);
+  const item = quoteData?.quoteResponse?.result?.[0];
+  if (!item) throw new Error("quote_not_found");
+  return item;
+}
+
+async function fetchChartHistory(symbol) {
+  const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=2y&includePrePost=false&events=div,splits&lang=fr-FR&region=FR`;
+  const chartData = await fetchJson(chartUrl);
+  const result = chartData?.chart?.result?.[0];
+  if (!result) {
+    return { series: [], meta: {} };
+  }
+
+  const timestamps = Array.isArray(result.timestamp) ? result.timestamp : [];
+  const values = pickChartSeries(result.indicators || {});
+  const series = timestamps
+    .map((ts, index) => ({
+      ts: ts * 1000,
+      value: Number(values?.[index])
+    }))
+    .filter((point) => Number.isFinite(point.value));
+
+  return { series, meta: result.meta || {} };
 }
 
 export default async function handler(req, res) {
@@ -81,20 +115,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=2y&includePrePost=false&events=div,splits&lang=fr-FR&region=FR`;
-    const data = await fetchJson(url);
-    const result = data?.chart?.result?.[0];
-    const meta = result?.meta || {};
-    const timestamps = Array.isArray(result?.timestamp) ? result.timestamp : [];
-    const indicators = result?.indicators || {};
-    const values = pickSeries(indicators);
+    const [quote, chart] = await Promise.all([
+      fetchQuoteSnapshot(symbol),
+      fetchChartHistory(symbol).catch(() => ({ series: [], meta: {} }))
+    ]);
 
-    const series = timestamps.map((ts, index) => ({
-      ts: ts * 1000,
-      value: Number(values?.[index])
-    })).filter((point) => Number.isFinite(point.value));
-
+    const series = Array.isArray(chart.series) ? chart.series : [];
     const latestSeriesPoint = series.length ? series[series.length - 1] : null;
+
     const now = new Date();
     const target1m = new Date(now);
     target1m.setMonth(target1m.getMonth() - 1);
@@ -103,24 +131,38 @@ export default async function handler(req, res) {
     const target1y = new Date(now);
     target1y.setFullYear(target1y.getFullYear() - 1);
 
-    const latestForHistory = latestSeriesPoint?.value ?? Number(meta.regularMarketPrice);
+    const livePrice = Number(quote.regularMarketPrice);
+    const previousClose = Number(quote.regularMarketPreviousClose ?? quote.previousClose);
+    const latestHistoryValue = latestSeriesPoint?.value;
+
+    const price = Number.isFinite(livePrice)
+      ? livePrice
+      : (Number.isFinite(latestHistoryValue) ? latestHistoryValue : null);
+
+    const latestForHistory = Number.isFinite(latestHistoryValue)
+      ? latestHistoryValue
+      : (Number.isFinite(price) ? price : null);
+
     const ref1m = getReferenceValue(series, target1m.getTime());
     const ref6m = getReferenceValue(series, target6m.getTime());
     const ref1y = getReferenceValue(series, target1y.getTime());
 
-    const price = Number(meta.regularMarketPrice ?? meta.previousClose ?? latestForHistory);
-    const previousClose = Number(meta.previousClose ?? meta.chartPreviousClose);
-    const change = Number.isFinite(price) && Number.isFinite(previousClose) ? price - previousClose : null;
-    const changePercent = Number.isFinite(change) && Number.isFinite(previousClose) && previousClose !== 0
-      ? (change / previousClose) * 100
-      : null;
+    const change = Number.isFinite(Number(quote.regularMarketChange))
+      ? Number(quote.regularMarketChange)
+      : (Number.isFinite(price) && Number.isFinite(previousClose) ? price - previousClose : null);
+
+    const changePercent = Number.isFinite(Number(quote.regularMarketChangePercent))
+      ? Number(quote.regularMarketChangePercent)
+      : (Number.isFinite(change) && Number.isFinite(previousClose) && previousClose !== 0
+          ? (change / previousClose) * 100
+          : null);
 
     return res.status(200).json({
       symbol,
-      name: meta.longName || meta.shortName || symbol,
-      type: normalizeType(meta.instrumentType),
-      region: meta.fullExchangeName || meta.exchangeName || meta.exchangeTimezoneName || "",
-      currency: meta.currency || "",
+      name: quote.longName || quote.shortName || symbol,
+      type: normalizeType(quote.quoteType || chart.meta?.instrumentType),
+      region: quote.fullExchangeName || quote.exchange || chart.meta?.exchangeName || chart.meta?.fullExchangeName || "",
+      currency: quote.currency || chart.meta?.currency || "",
       price: Number.isFinite(price) ? price : null,
       previousClose: Number.isFinite(previousClose) ? previousClose : null,
       change: Number.isFinite(change) ? change : null,
