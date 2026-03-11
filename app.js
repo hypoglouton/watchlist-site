@@ -1,62 +1,73 @@
-const searchInput = document.getElementById("searchInput");
-const searchButton = document.getElementById("searchButton");
-const resultsBox = document.getElementById("results");
-const watchlistBox = document.getElementById("watchlist");
-
-const MARKET_ORDER = [
-  "^FCHI",
-  "^GSPC",
-  "^STOXX50E",
-  "^IXIC",
-  "BZ=F",
-  "GC=F",
-  "EURUSD=X",
-  "SI=F"
+const MARKET_CARDS = [
+  { key: 'cac40', label: 'CAC 40' },
+  { key: 'sp500', label: 'S&P 500' },
+  { key: 'euroStoxx50', label: 'Euro Stoxx 50' },
+  { key: 'nasdaq', label: 'Nasdaq' },
+  { key: 'brent', label: 'Pétrole Brent' },
+  { key: 'gold', label: 'Once d\'or' },
+  { key: 'eurusd', label: 'EUR/USD Spot' },
+  { key: 'silver', label: 'Silver Continuous Contract' }
 ];
 
-const MARKET_CARD_KEYS = {
-  "^FCHI": "cac40",
-  "^GSPC": "sp500",
-  "^STOXX50E": "eurostoxx50",
-  "^IXIC": "nasdaq",
-  "BZ=F": "brent",
-  "GC=F": "gold",
-  "EURUSD=X": "eurusd",
-  "SI=F": "silver"
+const STORAGE_KEY = 'premium-watchlist-v1';
+
+const defaultWatchlist = [
+  { symbol: 'MSFT', name: 'Microsoft Corporation', type: 'Action', region: 'NasdaqGS', currency: 'USD' },
+  { symbol: 'MSFT.DE', name: 'Microsoft Corporation', type: 'Action', region: 'XETRA', currency: 'EUR' },
+  { symbol: 'CLS', name: 'Celestica Inc.', type: 'Action', region: 'NYSE', currency: 'USD' },
+  { symbol: 'NVDA.DE', name: 'NVIDIA Corporation', type: 'Action', region: 'XETRA', currency: 'EUR' },
+  { symbol: 'PPFB.DE', name: 'iShares Physical Metals PLC O', type: 'Action', region: 'XETRA', currency: 'EUR' },
+  { symbol: 'USCPHM.HM', name: 'OSS.Shill.Barc.C US Sec.Val.TRI', type: 'ETF', region: 'Hamburg', currency: 'EUR' },
+  { symbol: 'QVMP.DE', name: 'Invesco S&P 500 QVM UCITS ETF', type: 'ETF', region: 'XETRA', currency: 'EUR' },
+  { symbol: '1MU.MI', name: 'Micron Technology, Inc.', type: 'Action', region: 'Milan', currency: 'EUR' },
+  { symbol: 'AMZN', name: 'Amazon.com, Inc.', type: 'Action', region: 'NasdaqGS', currency: 'USD' },
+  { symbol: 'BLK', name: 'BlackRock, Inc.', type: 'Action', region: 'NYSE', currency: 'USD' },
+  { symbol: 'SPGI', name: 'S&P Global Inc.', type: 'Action', region: 'NYSE', currency: 'USD' },
+  { symbol: 'E7S.SG', name: 'Constellation Energy Corp', type: 'Action', region: 'Stuttgart', currency: 'EUR' }
+];
+
+const els = {
+  marketGrid: document.getElementById('marketGrid'),
+  searchInput: document.getElementById('searchInput'),
+  searchBtn: document.getElementById('searchBtn'),
+  searchResults: document.getElementById('searchResults'),
+  watchlistBody: document.getElementById('watchlistBody'),
+  watchlistCount: document.getElementById('watchlistCount'),
+  refreshBtn: document.getElementById('refreshBtn')
 };
 
-let watchlist = JSON.parse(localStorage.getItem("watchlist")) || [];
+let watchlist = loadWatchlist();
+
+function loadWatchlist() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [...defaultWatchlist];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length ? parsed : [...defaultWatchlist];
+  } catch {
+    return [...defaultWatchlist];
+  }
+}
 
 function saveWatchlist() {
-  localStorage.setItem("watchlist", JSON.stringify(watchlist));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(watchlist));
 }
 
 function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function normalizeText(value) {
-  return String(value || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9.=^]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 function formatNumber(value, digits = 2) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "";
-  return num.toLocaleString("fr-FR", {
+  if (!Number.isFinite(Number(value))) return '—';
+  return new Intl.NumberFormat('fr-FR', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits
-  });
+  }).format(Number(value));
 }
 
 function formatPrice(value) {
@@ -64,339 +75,224 @@ function formatPrice(value) {
 }
 
 function formatPercent(value) {
-  const num = Number(String(value ?? "").replace("%", "").trim());
-  if (!Number.isFinite(num)) return "";
-  const sign = num > 0 ? "+" : "";
-  return `${sign}${num.toFixed(2)}%`;
+  if (!Number.isFinite(Number(value))) return '<span class="empty-cell">&nbsp;</span>';
+  const number = Number(value);
+  const cls = number > 0 ? 'positive' : number < 0 ? 'negative' : 'neutral';
+  const sign = number > 0 ? '+' : '';
+  return `<span class="${cls}">${sign}${formatNumber(number, 2)}%</span>`;
 }
 
-function formatAbsoluteChange(value) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "";
-  const sign = num > 0 ? "+" : "";
-  return `${sign}${formatPrice(num)}`;
+function formatChange(value) {
+  if (!Number.isFinite(Number(value))) return '<span class="empty-cell">&nbsp;</span>';
+  const number = Number(value);
+  const cls = number > 0 ? 'positive' : number < 0 ? 'negative' : 'neutral';
+  const sign = number > 0 ? '+' : '';
+  return `<span class="${cls}">${sign}${formatNumber(number, 2)}</span>`;
 }
 
-function getChangeClass(value) {
-  const num = Number(String(value ?? "").replace("%", "").trim());
-  if (!Number.isFinite(num)) return "neutral";
-  if (num > 0) return "positive";
-  if (num < 0) return "negative";
-  return "neutral";
+function emptyCell(value) {
+  return Number.isFinite(Number(value)) ? formatPercent(value) : '<span class="empty-cell">&nbsp;</span>';
 }
 
-function renderSectionHead(title, countLabel) {
-  return `
-    <div class="section-head">
-      <div class="section-head-title">${escapeHtml(title)}</div>
-      <div class="section-count">${escapeHtml(countLabel)}</div>
+function renderMarketCards(payload = {}) {
+  els.marketGrid.innerHTML = MARKET_CARDS.map(({ key, label }) => {
+    const item = payload[key] || {};
+    const price = item.error ? 'Indisponible' : formatPrice(item.price);
+    const changeValue = Number(item.changePercent);
+    const cls = changeValue > 0 ? 'positive' : changeValue < 0 ? 'negative' : 'neutral';
+    const sign = changeValue > 0 ? '+' : '';
+    const variation = item.error
+      ? 'Erreur de récupération des marchés.'
+      : Number.isFinite(changeValue)
+        ? `${sign}${formatNumber(changeValue, 2)}%`
+        : '—';
+
+    return `
+      <article class="market-card">
+        <div>
+          <div class="market-label">${escapeHtml(label)}</div>
+          <div class="market-price">${escapeHtml(price)}</div>
+        </div>
+        <div class="market-change ${cls}">${escapeHtml(variation)}</div>
+      </article>
+    `;
+  }).join('');
+}
+
+function renderWatchlist() {
+  els.watchlistCount.textContent = `${watchlist.length} ${watchlist.length > 1 ? 'valeurs' : 'valeur'}`;
+
+  if (!watchlist.length) {
+    els.watchlistBody.innerHTML = `
+      <tr>
+        <td colspan="13" style="text-align:center; color:#93a4c3; padding:28px 10px;">Aucune valeur dans la watchlist.</td>
+      </tr>
+    `;
+    return;
+  }
+
+  els.watchlistBody.innerHTML = watchlist.map((item, index) => `
+    <tr>
+      <td>${escapeHtml(item.name || item.symbol)}</td>
+      <td><span class="ticker-pill">${escapeHtml(item.symbol)}</span></td>
+      <td>${escapeHtml(item.type || '')}</td>
+      <td>${escapeHtml(item.region || '')}</td>
+      <td>${escapeHtml(item.currency || '')}</td>
+      <td>${Number.isFinite(Number(item.price)) ? formatPrice(item.price) : '<span class="empty-cell">&nbsp;</span>'}</td>
+      <td>${formatPercent(item.changePercent)}</td>
+      <td>${formatChange(item.change)}</td>
+      <td>${Number.isFinite(Number(item.previousClose)) ? formatPrice(item.previousClose) : '<span class="empty-cell">&nbsp;</span>'}</td>
+      <td>${emptyCell(item.perf1m)}</td>
+      <td>${emptyCell(item.perf6m)}</td>
+      <td>${emptyCell(item.perf1y)}</td>
+      <td><button class="remove-btn" data-index="${index}">Retirer</button></td>
+    </tr>
+  `).join('');
+}
+
+function renderSearchResults(results = []) {
+  if (!results.length) {
+    els.searchResults.innerHTML = '<div class="result-placeholder">Aucun résultat exploitable.</div>';
+    return;
+  }
+
+  els.searchResults.innerHTML = results.map((item, index) => `
+    <div class="result-item">
+      <div class="result-main">
+        <div class="result-name">${escapeHtml(item.name || item.symbol)}</div>
+        <div class="result-meta">${escapeHtml(item.symbol)} · ${escapeHtml(item.type || '')} · ${escapeHtml(item.region || '')} · ${escapeHtml(item.currency || '')}</div>
+      </div>
+      <div>${Number.isFinite(Number(item.price)) ? formatPrice(item.price) : '—'}</div>
+      <div>${formatPercent(item.changePercent)}</div>
+      <div>${Number.isFinite(Number(item.previousClose)) ? formatPrice(item.previousClose) : '—'}</div>
+      <div><button class="btn secondary" data-add-index="${index}">Ajouter</button></div>
     </div>
-  `;
+  `).join('');
+
+  els.searchResults.dataset.results = JSON.stringify(results);
 }
 
-function renderEmptyState(message) {
-  return `<div class="empty-state">${escapeHtml(message)}</div>`;
-}
-
-function displayCell(value, formatter = null) {
-  if (value === null || value === undefined || value === "") {
-    return '<span class="cell-empty"></span>';
-  }
-  const output = formatter ? formatter(value) : String(value);
-  return output ? escapeHtml(output) : '<span class="cell-empty"></span>';
-}
-
-async function apiSearch(query) {
-  const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data?.error || "search_failed");
-  return Array.isArray(data.results) ? data.results : [];
-}
-
-async function apiQuote(symbol) {
-  const response = await fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`);
-  const data = await response.json();
-  if (!response.ok) return null;
-  return data;
-}
-
-async function apiMarket() {
-  const response = await fetch(`/api/market?symbols=${encodeURIComponent(MARKET_ORDER.join(","))}`);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data?.error || "market_failed");
-  return data;
-}
-
-async function refreshMarketIndices() {
+async function loadMarkets() {
+  renderMarketCards();
   try {
-    const data = await apiMarket();
-    const bySymbol = data?.results || {};
-
-    MARKET_ORDER.forEach((symbol) => {
-      const cardKey = MARKET_CARD_KEYS[symbol];
-      const card = document.querySelector(`[data-index-card="${cardKey}"]`);
-      if (!card) return;
-
-      const item = bySymbol[symbol];
-      if (!item || item.price === null || item.price === undefined) {
-        card.querySelector(".index-value").textContent = "Indisponible";
-        card.querySelector(".index-change").textContent = "-";
-        card.querySelector(".index-change").className = "index-change neutral";
-        card.querySelector(".index-meta").textContent = "La dernière cote n’a pas pu être récupérée.";
-        return;
-      }
-
-      const changeClass = getChangeClass(item.changePercent);
-      const pct = formatPercent(item.changePercent) || "-";
-      const abs = formatAbsoluteChange(item.change) || "-";
-      const prev = formatPrice(item.previousClose) || "-";
-
-      card.querySelector(".index-value").textContent = formatPrice(item.price);
-      card.querySelector(".index-change").textContent = `${abs} • ${pct}`;
-      card.querySelector(".index-change").className = `index-change ${changeClass}`;
-      card.querySelector(".index-meta").textContent = `Clôture précédente : ${prev}`;
-    });
+    const res = await fetch('/api/market');
+    const data = await res.json();
+    renderMarketCards(data);
   } catch {
-    document.querySelectorAll("[data-index-card]").forEach((card) => {
-      card.querySelector(".index-value").textContent = "Indisponible";
-      card.querySelector(".index-change").textContent = "-";
-      card.querySelector(".index-change").className = "index-change neutral";
-      card.querySelector(".index-meta").textContent = "Erreur de récupération des marchés.";
-    });
+    renderMarketCards();
   }
 }
 
-async function refreshWatchlist() {
+async function refreshWatchlistQuotes() {
   if (!watchlist.length) {
     renderWatchlist();
     return;
   }
 
-  const updated = [];
-  for (const item of watchlist) {
-    const fresh = await apiQuote(item.symbol);
-    updated.push({
-      ...item,
-      ...(fresh || {})
-    });
+  els.refreshBtn.disabled = true;
+  els.refreshBtn.textContent = 'Actualisation...';
+
+  await Promise.all(watchlist.map(async (item) => {
+    try {
+      const res = await fetch(`/api/quote?symbol=${encodeURIComponent(item.symbol)}`);
+      const data = await res.json();
+      if (!res.ok) return;
+      Object.assign(item, {
+        name: data.name || item.name,
+        type: data.type || item.type,
+        region: data.region || item.region,
+        currency: data.currency || item.currency,
+        price: data.price,
+        previousClose: data.previousClose,
+        change: data.change,
+        changePercent: data.changePercent,
+        perf1m: data.perf1m,
+        perf6m: data.perf6m,
+        perf1y: data.perf1y
+      });
+    } catch {
+      // keep existing row values
+    }
+  }));
+
+  saveWatchlist();
+  renderWatchlist();
+  els.refreshBtn.disabled = false;
+  els.refreshBtn.textContent = 'Rafraîchir les cours';
+}
+
+async function runSearch() {
+  const query = els.searchInput.value.trim();
+  if (!query) {
+    renderSearchResults([]);
+    return;
   }
 
-  watchlist = updated;
+  els.searchBtn.disabled = true;
+  els.searchBtn.textContent = 'Recherche...';
+  els.searchResults.innerHTML = '<div class="result-placeholder">Recherche en cours...</div>';
+
+  try {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    renderSearchResults(Array.isArray(data.results) ? data.results : []);
+  } catch {
+    els.searchResults.innerHTML = '<div class="result-placeholder">Erreur de recherche.</div>';
+  }
+
+  els.searchBtn.disabled = false;
+  els.searchBtn.textContent = 'Rechercher';
+}
+
+function addToWatchlist(item) {
+  const exists = watchlist.some((row) => String(row.symbol).toUpperCase() === String(item.symbol).toUpperCase());
+  if (exists) return;
+  watchlist.unshift({
+    symbol: item.symbol,
+    name: item.name || item.symbol,
+    type: item.type || '',
+    region: item.region || '',
+    currency: item.currency || '',
+    price: item.price ?? null,
+    previousClose: item.previousClose ?? null,
+    change: item.change ?? null,
+    changePercent: item.changePercent ?? null,
+    perf1m: null,
+    perf6m: null,
+    perf1y: null
+  });
   saveWatchlist();
   renderWatchlist();
 }
 
-function renderWatchlist() {
-  watchlistBox.innerHTML = "";
-
-  if (!watchlist.length) {
-    watchlistBox.innerHTML = renderEmptyState("Ta watchlist est vide pour le moment.");
-    return;
-  }
-
-  const wrapper = document.createElement("div");
-  wrapper.innerHTML = `
-    ${renderSectionHead("Ma watchlist", `${watchlist.length} valeur${watchlist.length > 1 ? "s" : ""}`)}
-    <div class="table-toolbar">
-      <div class="section-head-title">Cours de la watchlist</div>
-      <button id="refreshWatchlistBtn" class="small-btn">Rafraîchir les cours</button>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Nom</th>
-            <th>Ticker</th>
-            <th>Type</th>
-            <th>Marché</th>
-            <th>Devise</th>
-            <th class="num">Prix</th>
-            <th class="num">Var %</th>
-            <th class="num">Var jour</th>
-            <th class="num">Clôture préc.</th>
-            <th class="num">1M</th>
-            <th class="num">6M</th>
-            <th class="num">1A</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${watchlist.map((item) => {
-            const priceClass = getChangeClass(item.changePercent);
-            const pctClass = getChangeClass(item.changePercent);
-            const perf1mClass = getChangeClass(item.perf1m);
-            const perf6mClass = getChangeClass(item.perf6m);
-            const perf1yClass = getChangeClass(item.perf1y);
-            return `
-              <tr>
-                <td class="wl-name">
-                  <div class="wl-name-main">${escapeHtml(item.name || item.symbol)}</div>
-                  <div class="wl-name-sub"></div>
-                </td>
-                <td><span class="ticker-chip">${escapeHtml(item.symbol)}</span></td>
-                <td>${displayCell(item.type)}</td>
-                <td>${displayCell(item.region)}</td>
-                <td>${displayCell(item.currency)}</td>
-                <td class="num cell-price ${priceClass}">${displayCell(item.price, formatPrice)}</td>
-                <td class="num ${pctClass}">${displayCell(item.changePercent, formatPercent)}</td>
-                <td class="num ${pctClass}">${displayCell(item.change, formatAbsoluteChange)}</td>
-                <td class="num">${displayCell(item.previousClose, formatPrice)}</td>
-                <td class="num ${perf1mClass}">${displayCell(item.perf1m, formatPercent)}</td>
-                <td class="num ${perf6mClass}">${displayCell(item.perf6m, formatPercent)}</td>
-                <td class="num ${perf1yClass}">${displayCell(item.perf1y, formatPercent)}</td>
-                <td><button class="remove-btn small-btn" data-symbol="${escapeHtml(item.symbol)}">Retirer</button></td>
-              </tr>
-            `;
-          }).join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
-
-  watchlistBox.appendChild(wrapper);
-
-  const refreshBtn = document.getElementById("refreshWatchlistBtn");
-  if (refreshBtn) {
-    refreshBtn.addEventListener("click", refreshWatchlist);
-  }
-
-  document.querySelectorAll(".remove-btn").forEach((button) => {
-    button.addEventListener("click", () => {
-      watchlist = watchlist.filter((item) => item.symbol !== button.dataset.symbol);
-      saveWatchlist();
-      renderWatchlist();
-    });
-  });
-}
-
-function renderResults(items) {
-  resultsBox.innerHTML = "";
-
-  if (!items.length) {
-    resultsBox.innerHTML = `
-      ${renderSectionHead("Résultats de recherche", "0 résultat")}
-      ${renderEmptyState("Aucun résultat cotable trouvé.")}
-    `;
-    return;
-  }
-
-  const header = document.createElement("div");
-  header.innerHTML = renderSectionHead(
-    "Résultats de recherche",
-    `${items.length} résultat${items.length > 1 ? "s" : ""}`
-  );
-  resultsBox.appendChild(header.firstElementChild);
-
-  items.forEach((item) => {
-    const alreadyAdded = watchlist.some((w) => normalizeText(w.symbol) === normalizeText(item.symbol));
-
-    const row = document.createElement("div");
-    row.className = "card";
-
-    const percentText = item.changePercent !== "" ? formatPercent(item.changePercent) : "-";
-    const changeText = item.change !== "" ? formatAbsoluteChange(item.change) : "-";
-    const changeClass = getChangeClass(item.changePercent);
-
-    row.innerHTML = `
-      <div class="left">
-        <div class="top-line">
-          <div class="identity">
-            <div class="title">${escapeHtml(item.name || item.symbol)}</div>
-            <div class="ticker">${escapeHtml(item.symbol)}</div>
-          </div>
-
-          <div class="price-box">
-            <div class="price ${changeClass}">${formatPrice(item.price) || "-"}</div>
-            <div class="change ${changeClass}">${percentText || "-"}</div>
-          </div>
-        </div>
-
-        <div class="meta">
-          <div class="meta-line">${escapeHtml(item.type || "-")} • ${escapeHtml(item.region || "-")} • ${escapeHtml(item.currency || "-")}</div>
-          <div class="meta-line">Variation jour : ${changeText || "-"}</div>
-          <div class="meta-line">Clôture précédente : ${item.previousClose !== "" ? formatPrice(item.previousClose) : "-"}</div>
-        </div>
-      </div>
-
-      <div class="actions">
-        <button class="add-btn" data-symbol="${escapeHtml(item.symbol)}" ${alreadyAdded ? "disabled" : ""}>
-          ${alreadyAdded ? "Déjà ajoutée" : "Ajouter"}
-        </button>
-      </div>
-    `;
-
-    resultsBox.appendChild(row);
-  });
-
-  document.querySelectorAll(".add-btn").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const item = items.find((asset) => asset.symbol === button.dataset.symbol);
-      if (!item) return;
-
-      const exists = watchlist.some((asset) => normalizeText(asset.symbol) === normalizeText(item.symbol));
-      if (exists) return;
-
-      button.disabled = true;
-      button.textContent = "Ajout...";
-
-      const fresh = await apiQuote(item.symbol);
-
-      watchlist.push({
-        symbol: item.symbol,
-        name: item.name || item.symbol,
-        type: fresh?.type || item.type || "",
-        region: fresh?.region || item.region || "",
-        currency: fresh?.currency || item.currency || "",
-        price: fresh?.price ?? item.price ?? "",
-        changePercent: fresh?.changePercent ?? item.changePercent ?? "",
-        change: fresh?.change ?? item.change ?? "",
-        previousClose: fresh?.previousClose ?? item.previousClose ?? "",
-        perf1m: fresh?.perf1m ?? "",
-        perf6m: fresh?.perf6m ?? "",
-        perf1y: fresh?.perf1y ?? ""
-      });
-
-      saveWatchlist();
-      renderWatchlist();
-
-      button.textContent = "Déjà ajoutée";
-      button.disabled = true;
-    });
-  });
-}
-
-async function handleSearch() {
-  const query = searchInput.value.trim();
-  if (!query) {
-    resultsBox.innerHTML = renderEmptyState("Entre un nom ou un ticker pour lancer la recherche.");
-    return;
-  }
-
-  searchButton.disabled = true;
-  searchButton.textContent = "Recherche...";
-  resultsBox.innerHTML = `
-    ${renderSectionHead("Résultats de recherche", "Analyse en cours")}
-    ${renderEmptyState("Recherche des instruments cotables en cours...")}
-  `;
-
-  try {
-    const items = await apiSearch(query);
-    renderResults(items);
-  } catch {
-    resultsBox.innerHTML = `
-      ${renderSectionHead("Résultats de recherche", "Erreur")}
-      ${renderEmptyState("La recherche a échoué. Réessaie dans un instant.")}
-    `;
-  } finally {
-    searchButton.disabled = false;
-    searchButton.textContent = "Rechercher";
-  }
-}
-
-searchButton.addEventListener("click", handleSearch);
-searchInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") handleSearch();
+els.searchBtn.addEventListener('click', runSearch);
+els.searchInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') runSearch();
 });
 
-refreshMarketIndices();
+els.searchResults.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-add-index]');
+  if (!button) return;
+  try {
+    const results = JSON.parse(els.searchResults.dataset.results || '[]');
+    const item = results[Number(button.dataset.addIndex)];
+    if (item) addToWatchlist(item);
+  } catch {
+    // noop
+  }
+});
+
+els.watchlistBody.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-index]');
+  if (!button) return;
+  const index = Number(button.dataset.index);
+  watchlist.splice(index, 1);
+  saveWatchlist();
+  renderWatchlist();
+});
+
+els.refreshBtn.addEventListener('click', refreshWatchlistQuotes);
+
 renderWatchlist();
+loadMarkets();
+refreshWatchlistQuotes();

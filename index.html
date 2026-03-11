@@ -3,640 +3,497 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ma Watchlist</title>
+  <title>Suivi boursier premium</title>
   <style>
     :root {
-      --bg: #060b14;
-      --bg-2: #0a1120;
-      --panel: rgba(13, 20, 35, 0.82);
-      --panel-2: rgba(16, 24, 40, 0.92);
-      --border: rgba(148, 163, 184, 0.14);
-      --border-strong: rgba(148, 163, 184, 0.24);
-      --text: #eef4ff;
-      --muted: #90a1bf;
-      --muted-2: #6f819f;
-      --blue: #4f8cff;
-      --blue-2: #2563eb;
-      --green: #22c55e;
-      --red: #ef4444;
-      --gold: #f59e0b;
-      --shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
-      --radius-xl: 24px;
-      --radius-lg: 18px;
-      --radius-md: 14px;
-      --max-width: 1440px;
+      --bg: #04101f;
+      --bg-2: #07172c;
+      --panel: rgba(10, 24, 44, 0.86);
+      --panel-2: rgba(9, 21, 38, 0.94);
+      --line: rgba(113, 151, 214, 0.14);
+      --line-2: rgba(113, 151, 214, 0.22);
+      --text: #e9f0ff;
+      --muted: #93a4c3;
+      --accent: #5f8cff;
+      --accent-2: #79a2ff;
+      --green: #19d27c;
+      --red: #ff5b66;
+      --gold: #cda44a;
+      --shadow: 0 18px 60px rgba(0,0,0,.34);
+      --radius: 24px;
+      --radius-sm: 14px;
+      --table-header: rgba(20, 41, 74, 0.9);
     }
 
     * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
-
+    html, body { margin: 0; padding: 0; }
     body {
-      margin: 0;
-      min-height: 100vh;
-      padding: 28px;
-      font-family: Inter, Arial, sans-serif;
-      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       background:
-        radial-gradient(circle at 0% 0%, rgba(79,140,255,0.18), transparent 26%),
-        radial-gradient(circle at 100% 0%, rgba(34,197,94,0.10), transparent 20%),
-        radial-gradient(circle at 50% 100%, rgba(245,158,11,0.08), transparent 28%),
-        linear-gradient(180deg, #050912 0%, #08101b 48%, #050912 100%);
+        radial-gradient(circle at top, rgba(47,95,196,.18), transparent 26%),
+        linear-gradient(180deg, #020913 0%, #04101f 55%, #02070f 100%);
+      color: var(--text);
+      min-height: 100vh;
     }
 
-    .page-shell {
-      max-width: var(--max-width);
-      margin: 0 auto;
+    .container {
+      width: min(1180px, calc(100% - 32px));
+      margin: 24px auto 48px;
     }
 
-    .hero,
     .panel {
-      position: relative;
-      overflow: hidden;
-      border: 1px solid var(--border);
-      border-radius: 30px;
-      background: linear-gradient(135deg, rgba(17, 25, 40, 0.94), rgba(8, 13, 24, 0.96));
+      background: linear-gradient(180deg, rgba(16,32,58,.88), rgba(5,16,31,.92));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
       box-shadow: var(--shadow);
       backdrop-filter: blur(10px);
     }
 
     .hero {
-      padding: 28px;
-      margin-bottom: 22px;
+      padding: 18px;
+      overflow: hidden;
+      position: relative;
     }
 
-    .hero::before,
-    .panel::before {
+    .hero::after,
+    .search-panel::after,
+    .watchlist-panel::after {
       content: "";
       position: absolute;
-      inset: 0;
+      inset: auto -10% -25% auto;
+      width: 340px;
+      height: 340px;
+      background: radial-gradient(circle, rgba(42,106,255,.17), transparent 62%);
       pointer-events: none;
-      background:
-        linear-gradient(120deg, rgba(79,140,255,0.10), transparent 35%),
-        linear-gradient(300deg, rgba(34,197,94,0.06), transparent 26%);
     }
 
-    .hero-top,
-    .panel > * {
-      position: relative;
-      z-index: 1;
-    }
-
-    .hero-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.6fr 300px;
       gap: 18px;
-      flex-wrap: wrap;
-      margin-bottom: 22px;
+      align-items: start;
     }
-
-    .hero-copy { max-width: 720px; }
 
     .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
+      display: inline-block;
+      padding: 6px 12px;
       border-radius: 999px;
-      border: 1px solid rgba(79,140,255,0.20);
-      background: rgba(79,140,255,0.08);
-      color: #bfd3ff;
-      font-size: 12px;
-      letter-spacing: 0.08em;
+      border: 1px solid var(--line-2);
+      color: #c7d7fb;
+      font-size: 11px;
+      letter-spacing: .03em;
       text-transform: uppercase;
-      margin-bottom: 14px;
+      background: rgba(19, 35, 61, .64);
     }
 
     h1 {
-      margin: 0;
-      font-size: clamp(34px, 5vw, 56px);
-      line-height: 0.98;
+      margin: 12px 0 0;
+      font-size: clamp(2rem, 4vw, 3.35rem);
+      line-height: 1.02;
       letter-spacing: -0.04em;
     }
 
     .hero-side {
-      min-width: 220px;
       display: grid;
       gap: 10px;
     }
 
-    .mini-stat {
-      padding: 14px 16px;
+    .side-box {
+      border: 1px solid var(--line);
       border-radius: 16px;
-      border: 1px solid var(--border);
-      background: rgba(255,255,255,0.03);
+      background: rgba(12, 24, 41, .78);
+      padding: 14px 16px;
     }
 
-    .mini-label {
-      font-size: 12px;
-      color: var(--muted-2);
+    .side-label {
+      color: var(--muted);
+      font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
+      letter-spacing: .05em;
     }
 
-    .mini-value {
-      font-size: 22px;
-      line-height: 1;
-      color: #f8fbff;
-    }
+    .side-value { font-size: 1.05rem; }
 
-    .index-strip {
+    .markets-grid {
+      margin-top: 18px;
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 12px;
     }
 
-    .index-card {
-      padding: 16px;
-      border-radius: 18px;
-      border: 1px solid rgba(148, 163, 184, 0.12);
-      background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
-      min-height: 122px;
+    .market-card {
+      min-height: 112px;
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(24,38,64,.62), rgba(8,18,32,.88));
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
     }
 
-    .index-name {
-      font-size: 12px;
+    .market-label {
+      font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--muted-2);
-      margin-bottom: 10px;
-    }
-
-    .index-value {
-      font-size: clamp(24px, 2.2vw, 34px);
-      line-height: 1;
-      letter-spacing: -0.04em;
-      margin-bottom: 8px;
-      color: #fff;
-    }
-
-    .index-change {
-      font-size: 15px;
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-
-    .index-meta {
-      font-size: 12px;
+      letter-spacing: .05em;
       color: var(--muted);
-      line-height: 1.4;
+    }
+
+    .market-price {
+      font-size: 2rem;
+      line-height: 1;
+      margin: 4px 0;
+    }
+
+    .market-change {
+      font-size: .95rem;
     }
 
     .positive { color: var(--green); }
     .negative { color: var(--red); }
-    .neutral { color: #c7d2e3; }
+    .neutral { color: var(--muted); }
 
-    .panel {
-      margin-bottom: 22px;
+    .search-panel,
+    .watchlist-panel {
+      position: relative;
+      margin-top: 18px;
+      padding: 18px;
+      overflow: hidden;
     }
 
-    .panel-header {
-      padding: 20px 22px 14px 22px;
-      border-bottom: 1px solid rgba(148, 163, 184, 0.08);
-    }
-
-    .panel-kicker {
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--muted-2);
-      margin-bottom: 8px;
-    }
-
-    .panel-title-row {
+    .section-top {
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      gap: 14px;
-      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 14px;
     }
 
-    .panel-title {
-      margin: 0;
-      font-size: 24px;
-      letter-spacing: -0.03em;
-    }
-
-    .panel-subtitle {
-      margin: 8px 0 0 0;
+    .section-kicker {
       color: var(--muted);
-      font-size: 14px;
-      line-height: 1.45;
-    }
-
-    .panel-body {
-      padding: 20px 22px 22px 22px;
-    }
-
-    .section-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 7px 10px;
-      border-radius: 999px;
-      background: rgba(245, 158, 11, 0.08);
-      border: 1px solid rgba(245, 158, 11, 0.16);
-      color: #f7c15d;
-      font-size: 12px;
+      font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
+      letter-spacing: .05em;
+    }
+
+    .section-title {
+      margin: 3px 0 6px;
+      font-size: 2rem;
+      line-height: 1.05;
+    }
+
+    .section-subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: .95rem;
+    }
+
+    .badge {
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(205,164,74,.24);
+      color: #e4bb67;
+      background: rgba(91, 66, 16, .16);
+      font-size: 11px;
+      text-transform: uppercase;
+      white-space: nowrap;
     }
 
     .search-row {
       display: grid;
       grid-template-columns: 1fr auto;
       gap: 12px;
-      align-items: center;
-      margin-bottom: 14px;
+      margin-top: 14px;
     }
 
-    .input-wrap { position: relative; }
-
-    .input-icon {
-      position: absolute;
-      top: 50%;
-      left: 16px;
-      transform: translateY(-50%);
-      color: #6f819f;
-      font-size: 16px;
-      pointer-events: none;
-    }
-
-    input {
+    .search-input {
       width: 100%;
-      padding: 16px 18px 16px 44px;
-      border-radius: 16px;
-      border: 1px solid rgba(148, 163, 184, 0.16);
-      background: rgba(4, 9, 18, 0.92);
+      height: 54px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(1, 9, 20, 0.88);
       color: var(--text);
-      font-size: 15px;
+      padding: 0 16px;
       outline: none;
-      transition: 0.18s ease;
+      font-size: 1rem;
     }
 
-    input::placeholder { color: #70819d; }
-
-    input:focus {
-      border-color: rgba(79,140,255,0.70);
-      box-shadow: 0 0 0 4px rgba(79,140,255,0.14);
-      transform: translateY(-1px);
-    }
-
-    button {
-      padding: 15px 18px;
+    .btn {
       border: 0;
-      border-radius: 16px;
-      background: linear-gradient(180deg, var(--blue), var(--blue-2));
+      border-radius: 14px;
+      padding: 0 18px;
+      height: 54px;
       color: white;
+      background: linear-gradient(180deg, var(--accent-2), var(--accent));
       cursor: pointer;
-      font-size: 14px;
       font-weight: 600;
-      letter-spacing: 0.01em;
-      transition: 0.18s ease;
+      box-shadow: 0 10px 26px rgba(64,116,255,.28);
+    }
+
+    .btn.secondary {
+      height: 38px;
+      padding: 0 14px;
+      border-radius: 11px;
+      font-size: .9rem;
+    }
+
+    .chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      color: var(--muted);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      background: rgba(19, 31, 54, .56);
+    }
+
+    .results {
+      margin-top: 12px;
+      border: 1px dashed var(--line);
+      border-radius: 14px;
+      min-height: 72px;
+      padding: 10px;
+      background: rgba(7,18,33,.45);
+    }
+
+    .result-placeholder {
+      min-height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: .92rem;
+    }
+
+    .result-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) 120px 90px 90px auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(10, 22, 41, .82);
+      margin-bottom: 8px;
+    }
+
+    .result-main { min-width: 0; }
+    .result-name {
+      font-weight: 600;
       white-space: nowrap;
-      box-shadow: 0 10px 24px rgba(37, 99, 235, 0.28);
-    }
-
-    button:hover { transform: translateY(-1px); filter: brightness(1.04); }
-    button:active { transform: translateY(0); }
-    button:disabled { background: #475569; cursor: not-allowed; box-shadow: none; filter: none; transform: none; }
-
-    .ghost-note {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 6px;
-    }
-
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(148, 163, 184, 0.12);
-      color: #aab9d2;
-      font-size: 12px;
-    }
-
-    .results-wrap { display: grid; gap: 14px; }
-
-    .section-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 2px;
-    }
-
-    .section-head-title {
-      font-size: 14px;
-      color: #dce7fb;
-      letter-spacing: -0.02em;
-    }
-
-    .section-count {
-      font-size: 12px;
-      color: var(--muted);
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(148, 163, 184, 0.1);
-    }
-
-    .empty-state {
-      padding: 24px 18px;
-      border: 1px dashed rgba(148, 163, 184, 0.16);
-      border-radius: 18px;
-      text-align: center;
-      color: var(--muted);
-      background: rgba(255,255,255,0.02);
-      font-size: 14px;
-      line-height: 1.5;
-    }
-
-    .card {
-      display: flex;
-      justify-content: space-between;
-      align-items: stretch;
-      gap: 16px;
-      padding: 18px;
-      border: 1px solid rgba(148, 163, 184, 0.10);
-      border-radius: 20px;
-      background: linear-gradient(180deg, rgba(11, 17, 30, 0.96), rgba(6, 10, 19, 0.98));
-      transition: 0.18s ease;
-      position: relative;
       overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .result-meta {
+      color: var(--muted);
+      font-size: .88rem;
+      margin-top: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    .card::before {
-      content: "";
-      position: absolute;
-      inset: 0 auto 0 0;
-      width: 3px;
-      background: linear-gradient(180deg, rgba(79,140,255,0.85), rgba(79,140,255,0.12));
-      opacity: 0.9;
-    }
-
-    .card:hover {
-      transform: translateY(-2px);
-      border-color: rgba(148, 163, 184, 0.20);
-      box-shadow: 0 16px 34px rgba(0, 0, 0, 0.26);
-    }
-
-    .left { min-width: 0; flex: 1; }
-    .top-line { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; flex-wrap: wrap; }
-    .identity { min-width: 240px; flex: 1; }
-    .title { font-size: 20px; line-height: 1.2; color: #f7fbff; letter-spacing: -0.02em; margin-bottom: 6px; }
-
-    .ticker {
-      display: inline-flex;
+    .watchlist-meta {
+      display: flex;
+      gap: 10px;
       align-items: center;
-      gap: 8px;
-      color: #a8bbd8;
-      font-size: 13px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .pill-count {
       padding: 6px 10px;
       border-radius: 999px;
-      background: rgba(79,140,255,0.08);
-      border: 1px solid rgba(79,140,255,0.14);
-    }
-
-    .price-box { text-align: right; min-width: 190px; padding-left: 10px; }
-    .price { font-size: clamp(30px, 3vw, 40px); line-height: 1; letter-spacing: -0.04em; margin-bottom: 8px; color: #ffffff; }
-    .change { font-size: 16px; font-weight: 600; }
-
-    .meta { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
-    .meta-line {
-      margin: 0;
-      display: inline-flex;
-      align-items: center;
-      padding: 8px 10px;
-      border-radius: 10px;
-      background: rgba(255,255,255,0.035);
-      border: 1px solid rgba(148, 163, 184, 0.10);
+      background: rgba(76,93,124,.3);
+      color: var(--text);
       font-size: 12px;
-      color: var(--muted);
-      line-height: 1.3;
-    }
-
-    .actions { display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .add-btn { background: linear-gradient(180deg, #16a34a, #15803d); box-shadow: 0 10px 24px rgba(21, 128, 61, 0.22); }
-    .remove-btn { background: linear-gradient(180deg, #ef4444, #dc2626); box-shadow: 0 10px 24px rgba(220, 38, 38, 0.22); }
-
-    .table-toolbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-bottom: 14px;
+      border: 1px solid var(--line);
     }
 
     .table-wrap {
-      border: 1px solid rgba(148, 163, 184, 0.12);
-      border-radius: 18px;
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
       overflow: auto;
-      background: linear-gradient(180deg, rgba(8, 13, 24, 0.95), rgba(5, 10, 19, 0.98));
+      background: rgba(3, 11, 22, 0.82);
     }
 
     table {
       width: 100%;
-      border-collapse: separate;
-      border-spacing: 0;
-      min-width: 1180px;
+      border-collapse: collapse;
+      min-width: 1020px;
     }
 
     thead th {
       position: sticky;
       top: 0;
-      z-index: 2;
-      padding: 14px 12px;
-      text-align: left;
+      z-index: 1;
+      background: linear-gradient(180deg, rgba(19,41,74,.98), rgba(11,26,48,.98));
+      color: #d7e2fb;
       font-size: 12px;
-      color: #b9c9e4;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-      background: linear-gradient(180deg, rgba(16, 25, 42, 0.98), rgba(10, 17, 30, 0.98));
-      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+      letter-spacing: .04em;
+      text-align: left;
+      padding: 13px 10px;
+      border-bottom: 1px solid var(--line-2);
       white-space: nowrap;
     }
 
     tbody td {
-      padding: 14px 12px;
-      border-bottom: 1px solid rgba(148, 163, 184, 0.08);
-      color: #deebff;
-      font-size: 14px;
+      padding: 13px 10px;
+      border-bottom: 1px solid rgba(113,151,214,.08);
+      font-size: .94rem;
       white-space: nowrap;
-      vertical-align: middle;
     }
 
-    tbody tr:hover td {
-      background: rgba(79, 140, 255, 0.045);
+    tbody tr:hover {
+      background: rgba(18, 37, 65, .36);
     }
 
-    .wl-name {
-      min-width: 260px;
-    }
-
-    .wl-name-main {
-      color: #f5f9ff;
-      font-size: 15px;
-      line-height: 1.25;
-      margin-bottom: 6px;
-    }
-
-    .wl-name-sub {
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .cell-price {
-      font-size: 16px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }
-
-    .cell-empty {
-      color: rgba(144, 161, 191, 0.5);
-    }
-
-    .num {
-      text-align: right;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .ticker-chip {
-      display: inline-flex;
-      padding: 6px 9px;
+    .ticker-pill {
+      display: inline-block;
+      padding: 4px 8px;
       border-radius: 999px;
-      background: rgba(79,140,255,0.08);
-      border: 1px solid rgba(79,140,255,0.14);
-      color: #c8d8f2;
+      border: 1px solid var(--line);
+      background: rgba(17, 33, 61, .72);
       font-size: 12px;
+      color: #d8e5ff;
     }
 
-    .small-btn {
-      padding: 10px 12px;
-      border-radius: 12px;
-      font-size: 13px;
+    .remove-btn {
+      border: 0;
+      border-radius: 10px;
+      background: linear-gradient(180deg, #ff6c73, #ef3f4f);
+      color: white;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 600;
     }
 
+    .empty-cell { color: #5e7193; }
     .footer-note {
-      margin-top: 18px;
-      color: var(--muted-2);
-      font-size: 12px;
-      line-height: 1.5;
+      margin-top: 16px;
       text-align: center;
+      color: #6d84ad;
+      font-size: 12px;
     }
 
-    @media (max-width: 1180px) {
-      .index-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    @media (max-width: 980px) {
+      .hero-grid { grid-template-columns: 1fr; }
+      .markets-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .result-item { grid-template-columns: 1fr; }
+      .section-title { font-size: 1.7rem; }
     }
 
-    @media (max-width: 760px) {
-      body { padding: 16px; }
-      .hero, .panel { border-radius: 22px; }
-      .hero { padding: 20px; }
-      .panel-header, .panel-body { padding-left: 16px; padding-right: 16px; }
+    @media (max-width: 640px) {
+      .container { width: min(100% - 16px, 1180px); }
+      .hero, .search-panel, .watchlist-panel { padding: 14px; }
+      .markets-grid { grid-template-columns: 1fr; }
       .search-row { grid-template-columns: 1fr; }
-      .card { flex-direction: column; align-items: stretch; }
-      .top-line { flex-direction: column; align-items: stretch; gap: 12px; }
-      .price-box { min-width: 0; padding-left: 0; text-align: left; }
-      .actions, .toolbar-actions { width: 100%; }
-      .remove-btn, .add-btn, #searchButton { width: 100%; }
-      .hero-side, .index-strip { grid-template-columns: 1fr; }
-      .mini-value { font-size: 20px; }
-      table { min-width: 980px; }
+      h1 { font-size: 2.2rem; }
     }
   </style>
 </head>
 <body>
-  <div class="page-shell">
-    <section class="hero">
-      <div class="hero-top">
-        <div class="hero-copy">
-          <div class="eyebrow">Watchlist actions • ETF • marchés US & Europe</div>
+  <main class="container">
+    <section class="panel hero">
+      <div class="hero-grid">
+        <div>
+          <span class="eyebrow">Watchlist actions · ETF · Marchés US & Europe</span>
           <h1>Suivi boursier premium</h1>
         </div>
-
         <div class="hero-side">
-          <div class="mini-stat">
-            <div class="mini-label">Focus</div>
-            <div class="mini-value">Prix mis en avant</div>
+          <div class="side-box">
+            <div class="side-label">Focus</div>
+            <div class="side-value">Prix mis en avant</div>
           </div>
-          <div class="mini-stat">
-            <div class="mini-label">Priorité</div>
-            <div class="mini-value">Simplicité + vitesse</div>
+          <div class="side-box">
+            <div class="side-label">Priorité</div>
+            <div class="side-value">Simplicité + vitesse</div>
           </div>
         </div>
       </div>
 
-      <div class="index-strip">
-        <div class="index-card" data-index-card="cac40"><div class="index-name">CAC 40</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
-        <div class="index-card" data-index-card="sp500"><div class="index-name">S&amp;P 500</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
-        <div class="index-card" data-index-card="eurostoxx50"><div class="index-name">Euro Stoxx 50</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
-        <div class="index-card" data-index-card="nasdaq"><div class="index-name">Nasdaq</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
-        <div class="index-card" data-index-card="brent"><div class="index-name">Pétrole Brent</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
-        <div class="index-card" data-index-card="gold"><div class="index-name">Once d'or</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
-        <div class="index-card" data-index-card="eurusd"><div class="index-name">EUR/USD Spot</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
-        <div class="index-card" data-index-card="silver"><div class="index-name">Silver Continuous Contract</div><div class="index-value">Chargement...</div><div class="index-change neutral">-</div><div class="index-meta">Récupération en cours</div></div>
+      <div id="marketGrid" class="markets-grid"></div>
+    </section>
+
+    <section class="panel search-panel">
+      <div class="section-top">
+        <div>
+          <div class="section-kicker">Recherche</div>
+          <div class="section-title">Trouver un instrument</div>
+          <p class="section-subtitle">Tape un ticker exact ou un nom de valeur. Le but est d'aller vite vers le résultat le plus pertinent.</p>
+        </div>
+        <div class="badge">Nom ou ticker</div>
+      </div>
+
+      <div class="search-row">
+        <input id="searchInput" class="search-input" type="text" placeholder="Exemple : Microsoft, MSFT, CW8..." />
+        <button id="searchBtn" class="btn">Rechercher</button>
+      </div>
+
+      <div class="chips">
+        <span class="chip">Actions</span>
+        <span class="chip">ETF</span>
+        <span class="chip">US</span>
+        <span class="chip">Europe</span>
+      </div>
+
+      <div id="searchResults" class="results">
+        <div class="result-placeholder">Les résultats de recherche apparaîtront ici.</div>
       </div>
     </section>
 
-    <section class="panel">
-      <div class="panel-header">
-        <div class="panel-kicker">Recherche</div>
-        <div class="panel-title-row">
-          <h2 class="panel-title">Trouver un instrument</h2>
-          <span class="section-badge">Nom ou ticker</span>
+    <section class="panel watchlist-panel">
+      <div class="section-top">
+        <div>
+          <div class="section-kicker">Suivi</div>
+          <div class="section-title">Ma watchlist</div>
+          <p class="section-subtitle">Affichage en colonnes, proche d'une feuille Excel, avec les cases encore non alimentées laissées volontairement vides.</p>
         </div>
-        <p class="panel-subtitle">Tape un ticker exact ou un nom de valeur. Le but est d’aller vite vers le résultat le plus pertinent.</p>
+        <div class="badge">Vue tableau</div>
       </div>
 
-      <div class="panel-body">
-        <div class="search-row">
-          <div class="input-wrap">
-            <span class="input-icon">⌕</span>
-            <input id="searchInput" type="text" placeholder="Exemple : Microsoft, MSFT, CW8..." />
-          </div>
-          <button id="searchButton">Rechercher</button>
-        </div>
-
-        <div class="ghost-note">
-          <span class="pill">Actions</span>
-          <span class="pill">ETF</span>
-          <span class="pill">US</span>
-          <span class="pill">Europe</span>
-        </div>
-
-        <div id="results" class="results-wrap">
-          <div class="empty-state">Les résultats de recherche apparaîtront ici.</div>
-        </div>
+      <div class="watchlist-meta">
+        <span id="watchlistCount" class="pill-count">0 valeur</span>
+        <button id="refreshBtn" class="btn secondary">Rafraîchir les cours</button>
       </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Ticker</th>
+              <th>Type</th>
+              <th>Marché</th>
+              <th>Devise</th>
+              <th>Prix</th>
+              <th>Var %</th>
+              <th>Var jour</th>
+              <th>Clôture préc.</th>
+              <th>1M</th>
+              <th>6M</th>
+              <th>1A</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="watchlistBody"></tbody>
+        </table>
+      </div>
+
+      <div class="footer-note">Interface sombre, rapide et pensée pour une lecture immédiate des cotations et de la watchlist.</div>
     </section>
+  </main>
 
-    <section class="panel">
-      <div class="panel-header">
-        <div class="panel-kicker">Suivi</div>
-        <div class="panel-title-row">
-          <h2 class="panel-title">Ma watchlist</h2>
-          <span class="section-badge">Vue tableau</span>
-        </div>
-        <p class="panel-subtitle">Affichage en colonnes, proche d’une feuille Excel, avec les cases encore non alimentées laissées volontairement vides.</p>
-      </div>
-
-      <div class="panel-body">
-        <div id="watchlist">
-          <div class="empty-state">Ta watchlist est vide pour le moment.</div>
-        </div>
-      </div>
-    </section>
-
-    <p class="footer-note">Interface sombre, rapide et pensée pour une lecture immédiate des cotations et de la watchlist.</p>
-  </div>
-
-  <script src="app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
