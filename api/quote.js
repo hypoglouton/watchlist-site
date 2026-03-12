@@ -1,4 +1,10 @@
-import yahooFinance from 'yahoo-finance2';
+const YAHOO_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+  'Accept': 'application/json,text/plain,*/*',
+  'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+  'Origin': 'https://finance.yahoo.com',
+  'Referer': 'https://finance.yahoo.com/'
+};
 
 function normalizeType(rawType) {
   const value = String(rawType || '').toUpperCase();
@@ -14,101 +20,157 @@ function normalizeType(rawType) {
   return map[value] || rawType || '';
 }
 
-function toNumber(value) {
-  return Number.isFinite(Number(value)) ? Number(value) : null;
+function formatDateYYYYMMDD(timestampMs) {
+  const date = new Date(timestampMs);
+  if (Number.isNaN(date.getTime())) return '';
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
-function calcPerf(latest, past) {
-  if (!Number.isFinite(latest) || !Number.isFinite(past) || past === 0) return null;
-  return ((latest - past) / past) * 100;
-}
-
-function firstValidNumber(array) {
-  if (!Array.isArray(array)) return null;
-  for (const value of array) {
-    if (Number.isFinite(Number(value))) return Number(value);
-  }
-  return null;
-}
-
-function nearestPastValue(points, targetTs) {
-  if (!Array.isArray(points) || !points.length) return null;
+function getReferenceValue(series, targetMs) {
   let candidate = null;
-  for (const point of points) {
-    if (point.ts <= targetTs && Number.isFinite(point.value)) candidate = point.value;
-    if (point.ts > targetTs) break;
+  for (const point of series) {
+    if (!Number.isFinite(point.value)) continue;
+    if (point.ts <= targetMs) {
+      candidate = point;
+    } else {
+      break;
+    }
   }
-  return candidate;
+  return candidate?.value ?? null;
 }
 
-export default async function handler(req, res) {
+function calcPerf(latestValue, referenceValue) {
+  if (!Number.isFinite(latestValue) || !Number.isFinite(referenceValue) || referenceValue === 0) {
+    return null;
+  }
+  return ((latestValue / referenceValue) - 1) * 100;
+}
+
+function pickChartSeries(indicators) {
+  const adjClose = indicators?.adjclose?.[0]?.adjclose;
+  if (Array.isArray(adjClose) && adjClose.some((v) => Number.isFinite(v))) return adjClose;
+  const close = indicators?.quote?.[0]?.close;
+  if (Array.isArray(close)) return close;
+  return [];
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url, { headers: YAHOO_HEADERS });
+  const text = await response.text();
+  let data = null;
+
+  try {
+    data = JSON.parse(text);
+  } catch (_) {
+    data = null;
+  }
+
+  if (!response.ok) {
+    const errorMessage =
+      data?.chart?.error?.description ||
+      data?.finance?.error?.description ||
+      data?.quoteResponse?.error?.description ||
+      'yahoo_request_failed';
+    throw new Error(errorMessage);
+  }
+
+  return data;
+}
+
+async function fetchQuoteSnapshot(symbol) {
+  const quoteUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}&lang=fr-FR&region=FR`;
+  const quoteData = await fetchJson(quoteUrl);
+  const item = quoteData?.quoteResponse?.result?.[0];
+  if (!item) throw new Error('quote_not_found');
+  return item;
+}
+
+async function fetchChartHistory(symbol) {
+  const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=2y&includePrePost=false&events=div,splits&lang=fr-FR&region=FR`;
+  const chartData = await fetchJson(chartUrl);
+  const result = chartData?.chart?.result?.[0];
+  if (!result) {
+    return { series: [], meta: {} };
+  }
+
+  const timestamps = Array.isArray(result.timestamp) ? result.timestamp : [];
+  const values = pickChartSeries(result.indicators || {});
+  const series = timestamps
+    .map((ts, index) => ({
+      ts: ts * 1000,
+      value: Number(values?.[index])
+    }))
+    .filter((point) => Number.isFinite(point.value));
+
+  return { series, meta: result.meta || {} };
+}
+
+module.exports = async function handler(req, res) {
   const symbol = String(req.query?.symbol || '').trim();
   if (!symbol) {
     return res.status(400).json({ error: 'missing_symbol' });
   }
 
   try {
-    const quote = await yahooFinance.quote(symbol, {
-      fields: [
-        'symbol',
-        'shortName',
-        'longName',
-        'quoteType',
-        'currency',
-        'fullExchangeName',
-        'exchange',
-        'regularMarketPrice',
-        'regularMarketChange',
-        'regularMarketChangePercent',
-        'regularMarketPreviousClose',
-        'previousClose'
-      ]
-    });
+    const [quote, chart] = await Promise.all([
+      fetchQuoteSnapshot(symbol),
+      fetchChartHistory(symbol).catch(() => ({ series: [], meta: {} }))
+    ]);
 
-    const chart = await yahooFinance.chart(symbol, {
-      period1: new Date(Date.now() - 1000 * 60 * 60 * 24 * 760),
-      interval: '1d'
-    }).catch(() => null);
+    const series = Array.isArray(chart.series) ? chart.series : [];
+    const latestSeriesPoint = series.length ? series[series.length - 1] : null;
 
-    const timestamps = Array.isArray(chart?.timestamp) ? chart.timestamp : [];
-    const adjclose = chart?.indicators?.adjclose?.[0]?.adjclose;
-    const close = chart?.indicators?.quote?.[0]?.close;
-    const values = Array.isArray(adjclose) ? adjclose : close;
+    const now = new Date();
+    const target1m = new Date(now);
+    target1m.setMonth(target1m.getMonth() - 1);
+    const target6m = new Date(now);
+    target6m.setMonth(target6m.getMonth() - 6);
+    const target1y = new Date(now);
+    target1y.setFullYear(target1y.getFullYear() - 1);
 
-    const points = timestamps
-      .map((ts, i) => ({ ts: Number(ts) * 1000, value: Number(values?.[i]) }))
-      .filter((point) => Number.isFinite(point.ts) && Number.isFinite(point.value));
+    const livePrice = Number(quote.regularMarketPrice);
+    const previousClose = Number(quote.regularMarketPreviousClose ?? quote.previousClose);
+    const latestHistoryValue = latestSeriesPoint?.value;
 
-    const historyLatest = points.length ? points[points.length - 1].value : null;
-    const price = toNumber(quote.regularMarketPrice) ?? historyLatest;
-    const previousClose = toNumber(quote.regularMarketPreviousClose) ?? toNumber(quote.previousClose);
-    const change = toNumber(quote.regularMarketChange) ?? (Number.isFinite(price) && Number.isFinite(previousClose) ? price - previousClose : null);
-    const changePercent = toNumber(quote.regularMarketChangePercent) ?? (Number.isFinite(change) && Number.isFinite(previousClose) && previousClose !== 0 ? (change / previousClose) * 100 : null);
+    const price = Number.isFinite(livePrice)
+      ? livePrice
+      : (Number.isFinite(latestHistoryValue) ? latestHistoryValue : null);
 
-    const now = Date.now();
-    const month1 = new Date(now);
-    month1.setMonth(month1.getMonth() - 1);
-    const month6 = new Date(now);
-    month6.setMonth(month6.getMonth() - 6);
-    const year1 = new Date(now);
-    year1.setFullYear(year1.getFullYear() - 1);
+    const latestForHistory = Number.isFinite(latestHistoryValue)
+      ? latestHistoryValue
+      : (Number.isFinite(price) ? price : null);
 
-    const latestForPerf = Number.isFinite(historyLatest) ? historyLatest : price;
+    const ref1m = getReferenceValue(series, target1m.getTime());
+    const ref6m = getReferenceValue(series, target6m.getTime());
+    const ref1y = getReferenceValue(series, target1y.getTime());
+
+    const change = Number.isFinite(Number(quote.regularMarketChange))
+      ? Number(quote.regularMarketChange)
+      : (Number.isFinite(price) && Number.isFinite(previousClose) ? price - previousClose : null);
+
+    const changePercent = Number.isFinite(Number(quote.regularMarketChangePercent))
+      ? Number(quote.regularMarketChangePercent)
+      : (Number.isFinite(change) && Number.isFinite(previousClose) && previousClose !== 0
+          ? (change / previousClose) * 100
+          : null);
 
     return res.status(200).json({
       symbol,
       name: quote.longName || quote.shortName || symbol,
-      type: normalizeType(quote.quoteType),
-      region: quote.fullExchangeName || quote.exchange || '',
-      currency: quote.currency || '',
-      price: toNumber(price),
-      previousClose: toNumber(previousClose),
-      change: toNumber(change),
-      changePercent: toNumber(changePercent),
-      perf1m: calcPerf(latestForPerf, nearestPastValue(points, month1.getTime())),
-      perf6m: calcPerf(latestForPerf, nearestPastValue(points, month6.getTime())),
-      perf1y: calcPerf(latestForPerf, nearestPastValue(points, year1.getTime())),
-      historyAsOf: firstValidNumber(timestamps) ? new Date(points[points.length - 1].ts).toISOString().slice(0, 10) : ''
+      type: normalizeType(quote.quoteType || chart.meta?.instrumentType),
+      region: quote.fullExchangeName || quote.exchange || chart.meta?.exchangeName || chart.meta?.fullExchangeName || '',
+      currency: quote.currency || chart.meta?.currency || '',
+      price: Number.isFinite(price) ? price : null,
+      previousClose: Number.isFinite(previousClose) ? previousClose : null,
+      change: Number.isFinite(change) ? change : null,
+      changePercent: Number.isFinite(changePercent) ? changePercent : null,
+      perf1m: calcPerf(latestForHistory, ref1m),
+      perf6m: calcPerf(latestForHistory, ref6m),
+      perf1y: calcPerf(latestForHistory, ref1y),
+      historyAsOf: latestSeriesPoint ? formatDateYYYYMMDD(latestSeriesPoint.ts) : ''
     });
   } catch (error) {
     return res.status(500).json({
@@ -116,4 +178,4 @@ export default async function handler(req, res) {
       details: error instanceof Error ? error.message : 'unknown_error'
     });
   }
-}
+};
