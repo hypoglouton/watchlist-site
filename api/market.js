@@ -1,77 +1,48 @@
+const { fmpFetch, normalizeQuoteItem, firstArrayItem } = require('./_fmp');
+
 const MARKET_MAP = {
-  cac40: { symbol: '^FCHI' },
-  sp500: { symbol: '^GSPC' },
-  euroStoxx50: { symbol: '^STOXX50E' },
-  nasdaq: { symbol: '^IXIC' },
-  brent: { symbol: 'BZ=F' },
-  gold: { symbol: 'GC=F' },
-  eurusd: { symbol: 'EURUSD=X' },
-  silver: { symbol: 'SI=F' }
+  cac40: '^FCHI',
+  sp500: '^GSPC',
+  euroStoxx50: '^STOXX50E',
+  nasdaq: '^IXIC',
+  brent: 'CLUSD',
+  gold: 'GCUSD',
+  eurusd: 'EURUSD',
+  silver: 'SIUSD'
 };
 
-const YAHOO_HEADERS = {
-  'User-Agent': 'Mozilla/5.0',
-  'Accept': 'application/json,text/plain,*/*',
-  'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7'
-};
-
-async function fetchJson(url) {
-  const response = await fetch(url, { headers: YAHOO_HEADERS });
-  const text = await response.text();
-
-  let data = null;
-  try {
-    data = JSON.parse(text);
-  } catch (_) {
-    data = null;
-  }
-
-  if (!response.ok) {
-    throw new Error(
-      (data && data.finance && data.finance.error && data.finance.error.description) ||
-      (data && data.chart && data.chart.error && data.chart.error.description) ||
-      'yahoo_request_failed'
-    );
-  }
-
-  return data;
+async function fetchMarket(symbol) {
+  const data = await fmpFetch('quote', { symbol });
+  const item = normalizeQuoteItem(firstArrayItem(data) || { symbol });
+  return {
+    symbol,
+    price: item.price,
+    change: item.change,
+    changePercent: item.changePercent
+  };
 }
 
 module.exports = async function handler(req, res) {
   try {
-    const symbols = Object.values(MARKET_MAP).map((item) => item.symbol).join(',');
-    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbols)}&lang=fr-FR&region=FR`;
-    const data = await fetchJson(url);
-    const results = Array.isArray(data && data.quoteResponse && data.quoteResponse.result)
-      ? data.quoteResponse.result
-      : [];
-    const bySymbol = new Map(results.map((item) => [item.symbol, item]));
+    const entries = await Promise.all(
+      Object.entries(MARKET_MAP).map(async ([key, symbol]) => {
+        try {
+          const value = await fetchMarket(symbol);
+          return [key, value];
+        } catch (error) {
+          return [key, {
+            error: 'market_fetch_failed',
+            details: error instanceof Error ? error.message : 'unknown_error'
+          }];
+        }
+      })
+    );
 
-    const payload = {};
-    for (const [key, { symbol }] of Object.entries(MARKET_MAP)) {
-      const item = bySymbol.get(symbol);
-      payload[key] = item
-        ? {
-            symbol,
-            name: item.shortName || item.longName || symbol,
-            price: Number.isFinite(Number(item.regularMarketPrice)) ? Number(item.regularMarketPrice) : null,
-            change: Number.isFinite(Number(item.regularMarketChange)) ? Number(item.regularMarketChange) : null,
-            changePercent: Number.isFinite(Number(item.regularMarketChangePercent)) ? Number(item.regularMarketChangePercent) : null,
-            previousClose: Number.isFinite(Number(item.regularMarketPreviousClose)) ? Number(item.regularMarketPreviousClose) : null
-          }
-        : { error: 'not_found' };
-    }
-
-    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
-    return res.status(200).json(payload);
+    return res.status(200).json(Object.fromEntries(entries));
   } catch (error) {
-    const fallback = {};
-    for (const key of Object.keys(MARKET_MAP)) {
-      fallback[key] = {
-        error: 'market_fetch_failed',
-        details: error instanceof Error ? error.message : 'unknown_error'
-      };
-    }
-    return res.status(200).json(fallback);
+    return res.status(500).json({
+      error: 'market_failed',
+      details: error instanceof Error ? error.message : 'unknown_error'
+    });
   }
 };
