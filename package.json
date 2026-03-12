@@ -2,7 +2,6 @@
   "name": "watchlist-site",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
   "dependencies": {
     "yahoo-finance2": "^3.13.2"
   }
