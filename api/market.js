@@ -1,131 +1,166 @@
-const { fmpFetch, normalizeQuoteItem, firstArrayItem } = require('./_fmp');
+const { fmpFetch, normalizeQuoteItem, toNumber } = require('./_fmp');
 
 const MARKET_CONFIG = {
-  cac40: { kind: 'index', symbol: '^FCHI', nameHint: 'CAC 40' },
-  sp500: { kind: 'index', symbol: '^GSPC', nameHint: 'S&P 500' },
-  euroStoxx50: { kind: 'index', symbol: '^STOXX50E', nameHint: 'Euro Stoxx 50' },
-  nasdaq: { kind: 'index', symbol: '^IXIC', nameHint: 'Nasdaq Composite' },
-  brent: { kind: 'commodity', symbol: 'CLUSD', fallbackSymbols: ['BZUSD', 'BNO'], nameHint: 'Brent' },
-  gold: { kind: 'commodity', symbol: 'GCUSD', nameHint: 'Gold' },
-  eurusd: { kind: 'forex', symbol: 'EURUSD', nameHint: 'EUR/USD' },
-  silver: { kind: 'commodity', symbol: 'SIUSD', nameHint: 'Silver' }
-};
-
-let cachedIndexList = null;
-let cachedCommodityList = null;
-
-async function fetchQuote(symbol) {
-  const data = await fmpFetch('quote', { symbol });
-  const item = normalizeQuoteItem(firstArrayItem(data) || { symbol });
-  if (item.price === null) {
-    throw new Error('missing_price');
+  cac40: {
+    bucket: 'index',
+    labelHints: ['cac 40', 'cac40'],
+    symbolHints: ['PX1', 'CAC40', '^FCHI']
+  },
+  sp500: {
+    bucket: 'index',
+    labelHints: ['s&p 500', 'sp 500', 's and p 500'],
+    symbolHints: ['SPX', '^GSPC', 'GSPC']
+  },
+  euroStoxx50: {
+    bucket: 'index',
+    labelHints: ['euro stoxx 50', 'eurostoxx 50', 'stoxx 50'],
+    symbolHints: ['SX5E', 'STOXX50E', '^STOXX50E']
+  },
+  nasdaq: {
+    bucket: 'index',
+    labelHints: ['nasdaq composite', 'nasdaq'],
+    symbolHints: ['IXIC', '^IXIC', 'COMP']
+  },
+  brent: {
+    bucket: 'commodity',
+    labelHints: ['brent', 'brent crude'],
+    symbolHints: ['BZUSD', 'BRENT', 'UKOIL']
+  },
+  gold: {
+    bucket: 'commodity',
+    labelHints: ['gold'],
+    symbolHints: ['GCUSD', 'XAUUSD', 'GOLD']
+  },
+  eurusd: {
+    bucket: 'forex',
+    labelHints: ['eur/usd', 'eur usd', 'euro usd'],
+    symbolHints: ['EURUSD']
+  },
+  silver: {
+    bucket: 'commodity',
+    labelHints: ['silver'],
+    symbolHints: ['SIUSD', 'XAGUSD', 'SILVER']
   }
-  return {
-    symbol,
-    price: item.price,
-    change: item.change,
-    changePercent: item.changePercent
-  };
-}
+};
 
 function normalizeText(value) {
   return String(value || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9.+\-]+/g, ' ')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9.+\/-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-async function getIndexList() {
-  if (!cachedIndexList) cachedIndexList = fmpFetch('index-list').catch(() => []);
-  return cachedIndexList;
+function scoreCandidate(item, config) {
+  const symbol = normalizeText(item.symbol || '');
+  const name = normalizeText(item.name || item.label || item.description || '');
+  let score = 0;
+
+  for (const hint of config.symbolHints || []) {
+    const h = normalizeText(hint);
+    if (!h) continue;
+    if (symbol === h) score += 1000;
+    if (symbol.startsWith(h)) score += 400;
+    if (symbol.includes(h)) score += 180;
+    if (name.includes(h)) score += 80;
+  }
+
+  for (const hint of config.labelHints || []) {
+    const h = normalizeText(hint);
+    if (!h) continue;
+    if (name === h) score += 900;
+    if (name.startsWith(h)) score += 500;
+    if (name.includes(h)) score += 260;
+    if (symbol === h) score += 200;
+  }
+
+  if (config.bucket === 'commodity') {
+    if (/crude|oil/.test(name) && config.labelHints.some((v) => /brent/i.test(v))) score += 60;
+    if (/spot/.test(name) && config.labelHints.some((v) => /gold|silver/i.test(v))) score += 40;
+  }
+
+  if (config.bucket === 'index') {
+    if (/index/.test(name)) score += 20;
+  }
+
+  return score;
 }
 
-async function getCommodityList() {
-  if (!cachedCommodityList) cachedCommodityList = fmpFetch('commodities-list').catch(() => []);
-  return cachedCommodityList;
+async function fetchBucket(bucket) {
+  if (bucket === 'index') return fmpFetch('batch-index-quotes');
+  if (bucket === 'commodity') return fmpFetch('batch-commodity-quotes');
+  if (bucket === 'forex') return fmpFetch('batch-forex-quotes');
+  return [];
 }
 
-function pickBestSymbol(items, hint, fallbacks = []) {
-  const hintNorm = normalizeText(hint);
+async function fetchAllBuckets() {
+  const [indexes, commodities, forex] = await Promise.all([
+    fetchBucket('index').catch(() => []),
+    fetchBucket('commodity').catch(() => []),
+    fetchBucket('forex').catch(() => []),
+  ]);
+
+  return { indexes, commodities, forex };
+}
+
+function selectFromBucket(items, config) {
   let best = null;
   let bestScore = -Infinity;
 
   for (const item of Array.isArray(items) ? items : []) {
-    const symbol = String(item.symbol || '');
-    const name = String(item.name || item.label || item.description || '');
-    const symbolNorm = normalizeText(symbol);
-    const nameNorm = normalizeText(name);
-    let score = 0;
-
-    if (fallbacks.some((s) => String(s).toUpperCase() === symbol.toUpperCase())) score += 600;
-    if (nameNorm === hintNorm) score += 1000;
-    if (nameNorm.startsWith(hintNorm)) score += 450;
-    if (nameNorm.includes(hintNorm)) score += 280;
-    if (symbolNorm === hintNorm) score += 500;
-    if (symbolNorm.includes(hintNorm)) score += 120;
-    if (/brent/i.test(hint) && /brent/i.test(name)) score += 400;
-    if (/cac/i.test(hint) && /cac/i.test(name)) score += 400;
-
+    const score = scoreCandidate(item, config);
     if (score > bestScore) {
       bestScore = score;
-      best = symbol;
+      best = item;
     }
   }
 
-  return best;
-}
-
-async function resolveFallbackSymbol(config) {
-  if (config.kind === 'index') {
-    const list = await getIndexList();
-    return pickBestSymbol(list, config.nameHint, [config.symbol, ...(config.fallbackSymbols || [])]);
-  }
-  if (config.kind === 'commodity') {
-    const list = await getCommodityList();
-    return pickBestSymbol(list, config.nameHint, [config.symbol, ...(config.fallbackSymbols || [])]);
-  }
-  return null;
-}
-
-async function fetchMarket(config) {
-  const tried = [config.symbol, ...(config.fallbackSymbols || [])].filter(Boolean);
-
-  for (const symbol of tried) {
-    try {
-      return await fetchQuote(symbol);
-    } catch {
-      // continue
-    }
+  if (!best || bestScore < 200) {
+    throw new Error('market_symbol_not_found');
   }
 
-  const resolved = await resolveFallbackSymbol(config);
-  if (resolved && !tried.includes(resolved)) {
-    return fetchQuote(resolved);
+  const quote = normalizeQuoteItem(best);
+  const price = quote.price ?? toNumber(best.last) ?? toNumber(best.close);
+  const changePercent = quote.changePercent ?? toNumber(best.changesPercentage) ?? toNumber(best.changePercent);
+  const change = quote.change ?? toNumber(best.change);
+
+  if (price === null) {
+    throw new Error('missing_price');
   }
 
-  throw new Error('market_symbol_not_found');
+  return {
+    symbol: best.symbol || quote.symbol,
+    price,
+    change,
+    changePercent
+  };
 }
 
 module.exports = async function handler(req, res) {
   try {
-    const entries = await Promise.all(
-      Object.entries(MARKET_CONFIG).map(async ([key, config]) => {
-        try {
-          const value = await fetchMarket(config);
-          return [key, value];
-        } catch (error) {
-          return [key, {
-            error: 'market_fetch_failed',
-            details: error instanceof Error ? error.message : 'unknown_error'
-          }];
-        }
-      })
-    );
+    const buckets = await fetchAllBuckets();
+    const payload = {};
 
-    return res.status(200).json(Object.fromEntries(entries));
+    for (const [key, config] of Object.entries(MARKET_CONFIG)) {
+      try {
+        const items = config.bucket === 'index'
+          ? buckets.indexes
+          : config.bucket === 'commodity'
+            ? buckets.commodities
+            : buckets.forex;
+        payload[key] = selectFromBucket(items, config);
+      } catch (error) {
+        payload[key] = {
+          error: 'market_fetch_failed',
+          details: error instanceof Error ? error.message : 'unknown_error'
+        };
+      }
+    }
+
+    return res.status(200).json(payload);
   } catch (error) {
     return res.status(500).json({
       error: 'market_failed',
